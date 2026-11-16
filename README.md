@@ -10,6 +10,7 @@ Staff email link ──► public/index.html ──POST /api/decision──► a
 Bookings come from GHL's **Service Menu**, so the function uses GHL's *service bookings* API:
 
 - `GET /calendars/services/bookings/{bookingId}` reads the booking from the email link: time, service and status.
+- If the link holds a calendar event ID instead, that call 404s. The function then reads the event (`GET /calendars/events/appointments/{id}`) and finds its booking with `GET /calendars/services/bookings?locationId=…&startTime=<ms>&endTime=<ms>`, matching contact, start time and service. The dates **must be epoch milliseconds**; ISO dates return an empty list.
 - `GET /calendars/events?locationId=…&userId=<staff>&startTime=<ms>&endTime=<ms>` finds the booking's calendar event, for the customer's phone and notes. This is best effort: if it isn't found, the page still shows the rest.
 - `PUT /calendars/services/bookings/{bookingId}` with `{"status": "confirmed" | "cancelled"}` updates it. Do **not** add `locationId` to the URL, or GHL rejects the call.
 
@@ -43,14 +44,14 @@ In **Project → Settings → Environment Variables**, add these, then **redeplo
 In the workflow that emails staff when a booking is made, add a button/link:
 
 ```
-https://appointmentpage-sand.vercel.app/?appointmentId=BOOKING_ID
+https://appointmentpage-sand.vercel.app/?appointmentId={{appointment.id}}
 ```
 
-- The parameter is called `appointmentId`, but its value must be the **Service Menu booking ID**, e.g. `BaaeEu7QuJL2y3mhaXEo`. The calendar appointment (event) ID is a different ID and shows "Invalid link".
+- `appointmentId` can be either the calendar appointment (event) ID, e.g. `y0z6pfBnZ8ExhGWmZGXm`, or the Service Menu booking ID, e.g. `p6MvqMcWSYmbKczsCz1n`. GHL gives the same appointment both IDs, and the server finds the booking from either.
 - Nothing else is needed in the link.
 - The page **loads everything else from GHL**: customer name, phone, service, date and time in the booking's timezone, notes, and the current status. Nothing needs to be passed in the link.
 - If the appointment was already confirmed or cancelled, the page shows that straight away, without buttons.
-- Send yourself a test email and check that the booking ID fills in.
+- Send yourself a test email and check that `{{appointment.id}}` fills in.
 
 ## 3. Notify the customer
 
@@ -89,7 +90,7 @@ Use a **dummy contact** for all of these.
 
 - **Error 502 with "GHL said…"**: the message is GHL's own. Vercel → **Logs** (search `decision`) has the details.
 - **Every click says "Already handled"**: the pending status isn't `new`. Set `PENDING_STATUSES`.
-- **"This appointment wasn't found"**: the booking was deleted, or the link has the calendar appointment (event) ID instead of the booking ID.
+- **"This appointment wasn't found"**: the booking was deleted, the ID is wrong, or it isn't a Service Menu booking.
 - **No phone or notes shown**: the booking's calendar event wasn't found. The decision still works.
 
 ## Security notes

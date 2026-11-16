@@ -1,16 +1,19 @@
 /*
  * /api/decision  (Vercel Serverless Function, Node 18+)
  *
- *   GET  ?appointmentId=<bookingId>             -> booking details for the page
- *   POST { appointmentId: <bookingId>, action: "approved" | "rejected" }
+ *   GET  ?appointmentId=<id>                    -> booking details for the page
+ *   POST { appointmentId: <id>, action: "approved" | "rejected" }
  *                                               -> sets the booking status in GHL
  *
- * The parameter is called "appointmentId" but holds the Service Menu
- * *booking* ID. There is no other access check: booking IDs are long random
- * GHL IDs, but anyone who has a staff email link can use it.
+ * <id> can be the Service Menu booking ID or the calendar event ID
+ * ({{appointment.id}}); an event ID is mapped to its booking.
+ * There is no other access check: the IDs are long and random,
+ * but anyone who has a staff email link can use it.
  *
  * Bookings come from GHL's Service Menu:
  *   1. GET /calendars/services/bookings/{bookingId}              read the booking
+ *      (if that 404s, the ID is an event ID: GET the event, then find its
+ *       booking in GET /calendars/services/bookings?locationId&startTime&endTime)
  *   2. GET /calendars/events?locationId&userId&startTime&endTime  (best effort)
  *        find its calendar event for the customer's phone + notes
  *   3. PUT /calendars/services/bookings/{bookingId}  { status }  (no locationId in URL!)
@@ -37,6 +40,7 @@ const GHL_BASE = "https://services.leadconnectorhq.com";
 const API_VERSION = "2021-04-15";
 const CONTACTS_API_VERSION = "2021-07-28";
 const GHL_TIMEOUT_MS = 8000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Page action -> GHL booking status
 const STATUS_FOR_ACTION = { approved: "confirmed", rejected: "cancelled" };
@@ -83,24 +87,63 @@ async function ghl(token, path, { method = "GET", version = API_VERSION, body } 
   }
 }
 
+const NOT_FOUND = { fail: { code: 404, body: { error: "not_found" } } };
+
+function ghlFailure(r, step) {
+  if (r.status === 401 || r.status === 403) {
+    console.error("[decision] GHL rejected the token (" + step + "):", r.status, r.data);
+    return { fail: { code: 502, body: Object.assign({ error: "ghl_auth", step }, ghlDetail(r)) } };
+  }
+  console.error("[decision] GHL error (" + step + "):", r.status, r.data);
+  return { fail: { code: 502, body: Object.assign({ error: "ghl_error", step }, ghlDetail(r)) } };
+}
+
 /*
- * Load the booking.
+ * Load the booking. `id` may be the Service Menu booking ID, or the calendar
+ * event ID ({{appointment.id}} in GHL); an event ID is mapped to its booking.
  * Returns { booking } or { fail: { code, body } }.
  */
-async function loadBooking(token, bookingId) {
-  const r = await ghl(token, "/calendars/services/bookings/" + encodeURIComponent(bookingId));
-  if (r.status === 401 || r.status === 403) {
-    console.error("[decision] GHL rejected the token (read booking):", r.status, r.data);
-    return { fail: { code: 502, body: Object.assign({ error: "ghl_auth", step: "read booking" }, ghlDetail(r)) } };
+async function loadBooking(token, id) {
+  const r = await ghl(token, "/calendars/services/bookings/" + encodeURIComponent(id));
+  if (r.ok) {
+    const booking = (r.data && (r.data.booking || r.data)) || {};
+    if (!booking.bookingId || booking.deleted) return NOT_FOUND;
+    return { booking };
   }
-  if (r.status === 400 || r.status === 404) return { fail: { code: 404, body: { error: "not_found" } } };
-  if (!r.ok) {
-    console.error("[decision] GHL error (read booking):", r.status, r.data);
-    return { fail: { code: 502, body: Object.assign({ error: "ghl_error", step: "read booking" }, ghlDetail(r)) } };
-  }
+  if (r.status !== 400 && r.status !== 404) return ghlFailure(r, "read booking");
+  return bookingFromEvent(token, id);
+}
 
-  const booking = (r.data && (r.data.booking || r.data)) || {};
-  if (!booking.bookingId || booking.deleted) return { fail: { code: 404, body: { error: "not_found" } } };
+/*
+ * Map a calendar event ID to its Service Menu booking: same contact, same
+ * start time, same service. The bookings list needs epoch-ms dates (ISO dates
+ * silently return nothing) and a range of at most 31 days.
+ */
+async function bookingFromEvent(token, eventId) {
+  const ev = await ghl(token, "/calendars/events/appointments/" + encodeURIComponent(eventId));
+  if (ev.status === 400 || ev.status === 404) return NOT_FOUND;
+  if (!ev.ok) return ghlFailure(ev, "read appointment");
+
+  const appt = (ev.data && (ev.data.appointment || ev.data.event)) || ev.data || {};
+  const start = Date.parse(appt.startTime);
+  if (!appt.locationId || isNaN(start)) return NOT_FOUND;
+
+  const list = await ghl(token,
+    "/calendars/services/bookings?locationId=" + encodeURIComponent(appt.locationId) +
+    "&startTime=" + (start - DAY_MS) + "&endTime=" + (start + DAY_MS));
+  if (!list.ok) return ghlFailure(list, "find booking");
+
+  const booking = ((list.data && list.data.bookings) || []).find((b) =>
+    !b.deleted &&
+    b.contactId === appt.contactId &&
+    Date.parse(b.startTime) === start &&
+    (!appt.calendarId || (b.services || []).some((s) => s.id === appt.calendarId))
+  );
+  if (!booking) {
+    console.warn("[decision] No service booking matches event", eventId);
+    return NOT_FOUND;
+  }
+  if (!booking.locationId) booking.locationId = appt.locationId;
   return { booking };
 }
 
@@ -194,7 +237,7 @@ module.exports = async function handler(req, res) {
   }
   if (!input || typeof input !== "object") return sendJson(res, 400, { error: "bad_request" });
 
-  // "appointmentId" in the link is the Service Menu booking ID.
+  // "appointmentId" in the link: booking ID or calendar event ID.
   const bookingId = String(input.appointmentId || "");
   const action = String(input.action || "");
 
@@ -227,7 +270,7 @@ module.exports = async function handler(req, res) {
 
     // ---- POST 4. Update the status ----
     const newStatus = STATUS_FOR_ACTION[action];
-    const update = await ghl(token, "/calendars/services/bookings/" + encodeURIComponent(bookingId), {
+    const update = await ghl(token, "/calendars/services/bookings/" + encodeURIComponent(booking.bookingId), {
       method: "PUT",
       body: { status: newStatus }
     });
