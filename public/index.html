@@ -2,39 +2,76 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <!-- Keep this page out of search engines. -->
   <meta name="robots" content="noindex, nofollow">
   <!-- Don't leak the query string (appointment/contact IDs, customer name) to the logo host or any other request. -->
   <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light dark">
   <title>Appointment approval</title>
 
   <style>
-    /* ---------------------------------------------------------------
-       Theme. Brand colors are set from the CONFIG block in the script
-       below; these are only fallbacks.
-       --------------------------------------------------------------- */
+    /* =================================================================
+       Design tokens. Brand colors come from the CONFIG block in the
+       script below; the values here are fallbacks.
+       ================================================================= */
     :root {
-      --brand-primary: #1f4e79;
-      --brand-accent: #2563eb;
+      --brand: #1f4e79;
+      --accent: #2563eb;
 
-      --bg: #f3f5f8;
-      --card: #ffffff;
-      --text: #1a1f29;
-      --muted: #5b6475;
-      --border: #e2e6ec;
+      --bg: #f3f4f6;
+      --surface: #ffffff;
+      --surface-2: #f8f9fb;
+      --border: #e5e7eb;
+      --text: #111827;
+      --text-2: #374151;
+      --muted: #6b7280;
 
-      --approve: #15803d;        /* white text on this = 5.0:1 contrast */
-      --approve-hover: #116a32;
-      --reject: #b91c1c;         /* 6.5:1 on white */
-      --reject-tint: #fdf2f2;
+      --brand-tint: #eef2f7;  /* replaced by color-mix below where supported */
 
-      --radius: 16px;
-      color-scheme: light;
+      --ok: #15803d;          /* white text on this: 5.0:1 */
+      --ok-hover: #166534;
+      --ok-soft: #dcfce7;
+      --danger: #b91c1c;      /* 6.5:1 on white */
+      --danger-line: #e8a1a1;
+      --danger-soft: #fef2f2;
+      --warn: #b45309;
+      --warn-soft: #fef3c7;
+
+      --radius-lg: 20px;
+      --radius: 12px;
+      --shadow: 0 1px 2px rgba(17, 24, 39, .04), 0 12px 32px -12px rgba(17, 24, 39, .14);
+    }
+    @supports (color: color-mix(in srgb, red, blue)) {
+      :root { --brand-tint: color-mix(in srgb, var(--brand) 9%, var(--surface)); }
     }
 
-    * { box-sizing: border-box; }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d0f13;
+        --surface: #161a20;
+        --surface-2: #1c2128;
+        --border: #2a303a;
+        --text: #f3f4f6;
+        --text-2: #d1d5db;
+        --muted: #9ca3af;
+        --brand-tint: #1d2633;
+        --ok-soft: #12321f;
+        --danger: #f87171;
+        --danger-line: #7f2d2d;
+        --danger-soft: #2a1617;
+        --warn: #fbbf24;
+        --warn-soft: #33270f;
+        --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 16px 40px -16px rgba(0, 0, 0, .6);
+      }
+      @supports (color: color-mix(in srgb, red, blue)) {
+        :root { --brand-tint: color-mix(in srgb, var(--brand) 22%, var(--surface)); }
+      }
+    }
 
+    /* ================================================================= */
+
+    * { box-sizing: border-box; }
     html, body { margin: 0; }
 
     body {
@@ -44,131 +81,242 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       font-size: 16px;
       line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
       -webkit-text-size-adjust: 100%;
     }
 
-    .wrap {
+    .page {
       max-width: 480px;
       margin: 0 auto;
-      padding: 24px 16px 48px;
+      padding: max(16px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom));
     }
 
-    .card {
-      background: var(--card);
-      border-radius: var(--radius);
-      border-top: 6px solid var(--brand-primary);
-      box-shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 8px 24px rgba(16, 24, 40, .08);
-      padding: 24px 20px;
+    /* ---------- Top bar ---------- */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 44px;
+      margin: 4px 2px 14px;
     }
-
-    @media (min-width: 420px) {
-      .wrap { padding-top: 48px; }
-      .card { padding: 28px 28px; }
-    }
-
-    /* Brand header (logo + business name) */
     .brand {
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin-bottom: 20px;
+      gap: 10px;
+      min-width: 0;
     }
     .brand img {
-      max-height: 40px;
-      max-width: 160px;
+      display: block;
+      max-height: 32px;
+      max-width: 150px;
       object-fit: contain;
     }
     .brand-name {
-      font-weight: 600;
-      color: var(--brand-primary);
+      font-weight: 650;
+      font-size: .9375rem;
+      letter-spacing: -.005em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-
-    h1 {
-      font-size: 1.5rem;
-      line-height: 1.25;
-      margin: 0 0 16px;
-    }
-    h2 {
-      font-size: 1.125rem;
-      margin: 0 0 8px;
-    }
-    h1:focus, h2:focus { outline: none; } /* headings receive focus programmatically only */
-
-    p { margin: 0 0 12px; }
-    .muted { color: var(--muted); }
-    .small { font-size: .875rem; }
-
-    /* Appointment details */
-    .details {
-      margin: 0 0 24px;
+    .secure {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      color: var(--muted);
+      font-size: .75rem;
+      font-weight: 600;
+    }
+    .secure .ic { width: 13px; height: 13px; }
+
+    /* ---------- Card ---------- */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
       overflow: hidden;
     }
-    .details > div {
-      display: grid;
-      grid-template-columns: 96px 1fr;
-      gap: 12px;
-      padding: 12px 14px;
+    .section { padding: 20px; }
+    .section + .section { border-top: 1px solid var(--border); }
+    @media (min-width: 420px) {
+      .section { padding: 22px 24px; }
     }
-    .details > div + div { border-top: 1px solid var(--border); }
-    .details dt { color: var(--muted); font-size: .9375rem; }
-    .details dd {
-      margin: 0;
+
+    .ic {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* ---------- Request header ---------- */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 10px 4px 9px;
+      border-radius: 999px;
+      font-size: .8125rem;
+      font-weight: 600;
+      background: var(--warn-soft);
+      color: var(--warn);
+    }
+    .pill .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    h1 {
+      margin: 12px 0 4px;
+      font-size: 1.375rem;
+      line-height: 1.25;
+      font-weight: 700;
+      letter-spacing: -.015em;
+    }
+    h1:focus, h2:focus, p:focus { outline: none; } /* focused programmatically only */
+    .lede { margin: 0; color: var(--muted); font-size: .9375rem; }
+
+    /* ---------- "When" panel ---------- */
+    .when {
+      margin-top: 18px;
+      padding: 16px;
+      border-radius: var(--radius);
+      background: var(--brand-tint);
+    }
+    .when-main {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .when-main .ic { color: var(--brand); margin-top: 2px; }
+    .when-date {
+      font-size: 1.0625rem;
+      font-weight: 650;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .when-time {
+      color: var(--text-2);
       font-weight: 500;
       overflow-wrap: anywhere;
-      white-space: pre-line; /* keep line breaks in notes */
     }
-    .details a { color: inherit; }
-
-    /* Buttons */
-    .actions {
-      display: grid;
+    .when-service {
+      display: flex;
+      align-items: center;
       gap: 12px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid rgba(127, 127, 127, .18);
+      color: var(--text-2);
+      font-weight: 500;
+      overflow-wrap: anywhere;
     }
-    @media (min-width: 420px) {
-      .actions { grid-template-columns: 1fr 1fr; }
+    .when-service .ic { color: var(--brand); }
+
+    /* ---------- Customer + extra details ---------- */
+    .label {
+      margin: 0 0 10px;
+      font-size: .75rem;
+      font-weight: 650;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--muted);
     }
+    .person {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      background: var(--brand-tint);
+      color: var(--brand);
+      font-weight: 700;
+      font-size: .9375rem;
+      letter-spacing: .02em;
+    }
+    @media (prefers-color-scheme: dark) { .avatar, .when-main .ic, .when-service .ic { color: var(--text); } }
+    .person-name { font-weight: 650; overflow-wrap: anywhere; }
+    .person-phone {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 2px;
+      color: var(--text-2);
+      text-decoration: none;
+      font-size: .9375rem;
+      border-radius: 6px;
+    }
+    .person-phone .ic { width: 15px; height: 15px; color: var(--muted); }
+    .person-phone:hover { text-decoration: underline; }
+    .person-phone:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+    .meta { margin: 16px 0 0; display: grid; gap: 14px; }
+    .meta-row { display: flex; gap: 12px; align-items: flex-start; }
+    .meta-row .ic { color: var(--muted); margin-top: 1px; width: 18px; height: 18px; }
+    .meta dt { font-size: .8125rem; color: var(--muted); }
+    .meta dd {
+      margin: 0;
+      color: var(--text);
+      white-space: pre-line; /* keep line breaks in notes */
+      overflow-wrap: anywhere;
+    }
+
+    /* ---------- Buttons ---------- */
+    .actions { display: grid; gap: 10px; }
 
     .btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 10px;
+      gap: 8px;
       width: 100%;
       min-height: 52px;
-      padding: 12px 20px;
-      border-radius: 12px;
-      border: 2px solid transparent;
+      padding: 12px 18px;
+      border-radius: var(--radius);
+      border: 1.5px solid transparent;
       font: inherit;
-      font-size: 1.0625rem;
-      font-weight: 600;
+      font-size: 1rem;
+      font-weight: 650;
+      letter-spacing: -.005em;
       cursor: pointer;
-      transition: background-color .15s, border-color .15s, color .15s;
+      -webkit-tap-highlight-color: transparent;
+      transition: background-color .15s, border-color .15s, color .15s, transform .05s;
     }
-    .btn:focus-visible {
-      outline: 3px solid var(--brand-accent);
-      outline-offset: 3px;
-    }
-    .btn:disabled { cursor: not-allowed; opacity: .6; }
+    .btn:active:not(:disabled) { transform: translateY(1px); }
+    .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+    .btn:disabled { cursor: not-allowed; opacity: .55; }
     .btn[aria-busy="true"] { opacity: 1; cursor: progress; }
+    .btn .ic { width: 18px; height: 18px; stroke-width: 2.4; }
 
-    .btn-approve { background: var(--approve); color: #fff; }
-    .btn-approve:hover:not(:disabled) { background: var(--approve-hover); }
+    .btn-approve { background: var(--ok); color: #fff; box-shadow: 0 1px 2px rgba(21, 128, 61, .25); }
+    .btn-approve:hover:not(:disabled) { background: var(--ok-hover); }
 
-    .btn-reject { background: #fff; color: var(--reject); border-color: var(--reject); }
-    .btn-reject:hover:not(:disabled) { background: var(--reject-tint); }
-    .btn-reject.solid { background: var(--reject); color: #fff; }
-    .btn-reject.solid:hover:not(:disabled) { background: #991b1b; }
+    .btn-reject { background: transparent; color: var(--danger); border-color: var(--danger-line); }
+    .btn-reject:hover:not(:disabled) { background: var(--danger-soft); border-color: var(--danger); }
+    .btn-reject.solid { background: #b91c1c; border-color: #b91c1c; color: #fff; }
+    .btn-reject.solid:hover:not(:disabled) { background: #991b1b; border-color: #991b1b; }
 
-    .btn-plain {
-      background: transparent;
-      color: var(--text);
-      border-color: var(--border);
-    }
-    .btn-plain:hover:not(:disabled) { background: #f6f7f9; }
+    .btn-ghost { background: transparent; color: var(--text-2); border-color: var(--border); }
+    .btn-ghost:hover:not(:disabled) { background: var(--surface-2); }
 
-    /* Spinner shown inside a button while sending */
     .spinner {
       width: 18px;
       height: 18px;
@@ -178,85 +326,116 @@
       animation: spin .7s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    @media (prefers-reduced-motion: reduce) {
-      .spinner { animation-duration: 2s; }
-    }
+    @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } }
 
-    /* Reject confirmation step */
-    .reject-step {
-      border: 1px solid #f3c7c7;
-      background: var(--reject-tint);
-      border-radius: 12px;
-      padding: 16px;
+    /* ---------- Reject step ---------- */
+    .reject-step h2 {
+      margin: 0 0 4px;
+      font-size: 1.0625rem;
+      font-weight: 700;
     }
-    label { display: block; font-weight: 600; margin: 12px 0 6px; }
+    .reject-step .lede { margin-bottom: 14px; }
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: .875rem;
+      font-weight: 600;
+      color: var(--text-2);
+    }
     .optional { font-weight: 400; color: var(--muted); }
     textarea {
       display: block;
       width: 100%;
-      min-height: 96px;
-      padding: 12px;
-      border: 1px solid #c9ced8;
-      border-radius: 10px;
-      font: inherit;
+      min-height: 104px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface-2);
       color: var(--text);
-      background: #fff;
+      font: inherit;
       resize: vertical;
     }
-    textarea:focus-visible {
-      outline: 3px solid var(--brand-accent);
-      outline-offset: 1px;
-      border-color: transparent;
-    }
-    .stack { display: grid; gap: 10px; margin-top: 14px; }
+    textarea::placeholder { color: var(--muted); }
+    textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; background: var(--surface); }
+    .hint { margin: 6px 0 16px; font-size: .8125rem; color: var(--muted); }
 
-    /* Status + error messages */
+    /* ---------- Status + error ---------- */
+    .status:empty { display: none; }
     .status {
-      margin-top: 14px;
-      min-height: 1.5em;
-      color: var(--muted);
-      font-size: .9375rem;
+      margin: 12px 0 0;
       text-align: center;
+      color: var(--muted);
+      font-size: .875rem;
     }
     .error-box {
-      margin-top: 16px;
-      padding: 14px 16px;
-      border-radius: 12px;
-      border: 1px solid #f1b5b5;
-      background: #fff5f5;
-      color: #7f1d1d;
+      display: flex;
+      gap: 12px;
+      margin-bottom: 14px;
+      padding: 14px;
+      border-radius: var(--radius);
+      background: var(--danger-soft);
+      border: 1px solid var(--danger-line);
+      color: var(--text);
     }
-    .error-box p { margin-bottom: 12px; }
+    .error-box > .ic { color: var(--danger); margin-top: 1px; }
+    .error-box p { margin: 0; font-size: .9375rem; }
+    .error-box .btn { margin-top: 12px; min-height: 44px; width: auto; padding: 8px 16px; font-size: .9375rem; }
 
-    /* Result + invalid states */
-    .result { text-align: center; padding: 8px 0; }
-    .result-icon {
+    /* ---------- Result + invalid states ---------- */
+    .state { padding: 36px 24px 28px; text-align: center; }
+    .state-icon {
       width: 64px;
       height: 64px;
-      margin: 0 auto 16px;
+      margin: 0 auto 18px;
       border-radius: 50%;
       display: grid;
       place-items: center;
-      font-size: 32px;
-      font-weight: 700;
-      color: #fff;
     }
-    .result-icon.ok { background: var(--approve); }
-    .result-icon.no { background: var(--reject); }
-    .result-icon.warn { background: #b45309; }
-    .reason-box {
-      text-align: left;
-      margin: 16px 0 0;
-      padding: 12px 14px;
-      border-radius: 10px;
-      background: #f6f7f9;
+    .state-icon .ic { width: 30px; height: 30px; stroke-width: 2.4; }
+    .state-icon.ok   { background: var(--ok-soft); color: var(--ok); box-shadow: 0 0 0 8px color-mix(in srgb, var(--ok-soft) 45%, transparent); }
+    .state-icon.no   { background: var(--danger-soft); color: var(--danger); box-shadow: 0 0 0 8px color-mix(in srgb, var(--danger-soft) 45%, transparent); }
+    .state-icon.warn { background: var(--warn-soft); color: var(--warn); box-shadow: 0 0 0 8px color-mix(in srgb, var(--warn-soft) 45%, transparent); }
+    @media (prefers-color-scheme: dark) { .state-icon.ok { color: #4ade80; } }
+    .state h1 { margin-top: 0; }
+    .state > p { margin: 0 auto; max-width: 34ch; color: var(--muted); }
+
+    .recap {
+      margin: 22px 0 0;
+      padding: 14px 16px;
+      border-radius: var(--radius);
+      background: var(--surface-2);
       border: 1px solid var(--border);
+      text-align: left;
+    }
+    .recap-title { font-weight: 650; overflow-wrap: anywhere; }
+    .recap-sub { color: var(--muted); font-size: .9375rem; overflow-wrap: anywhere; white-space: pre-line; }
+    .reason-box {
+      margin-top: 10px;
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      text-align: left;
       white-space: pre-line;
       overflow-wrap: anywhere;
+      font-size: .9375rem;
+      color: var(--text-2);
     }
+    .reason-box strong { display: block; color: var(--muted); font-size: .75rem; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 2px; }
+    .fine { margin: 18px auto 0 !important; font-size: .8125rem; color: var(--muted); }
+
+    .foot {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 6px;
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: .8125rem;
+      text-align: center;
+    }
+    .foot .ic { width: 14px; height: 14px; }
 
     [hidden] { display: none !important; }
-
     .sr-only {
       position: absolute;
       width: 1px; height: 1px;
@@ -269,70 +448,136 @@
   </style>
 </head>
 <body>
-  <main class="wrap">
-    <div class="card">
+  <!-- Icon sprite (simple line icons). Used via <svg><use href="#i-..."/></svg>. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></symbol>
+    <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><path d="M21 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 1.1 4.2 2 2 0 0 1 3.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L7 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 7.5v5.5M12 16.5h.01"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M12 11v5.5M12 7.5h.01"/></symbol>
+  </svg>
 
-      <!-- Logo and business name. Both are hidden if not configured. -->
-      <div class="brand" id="brand" hidden>
+  <div class="page">
+
+    <!-- Logo / business name, and a "Staff only" badge -->
+    <header class="topbar">
+      <div class="brand" id="brand">
         <img id="brandLogo" alt="" hidden>
-        <span class="brand-name" id="brandName"></span>
+        <span class="brand-name" id="brandName">Staff portal</span>
       </div>
+      <span class="secure"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg>Staff only</span>
+    </header>
 
-      <!-- STATE 1: invalid link (missing appointmentId or contactId) -->
-      <section id="viewInvalid" class="result" hidden>
-        <div class="result-icon warn" aria-hidden="true">!</div>
-        <h1 tabindex="-1">Invalid link</h1>
-        <p class="muted">This link is invalid. Please open the appointment in GHL.</p>
+    <main class="card">
+
+      <!-- STATE 1: invalid link (missing appointmentId, contactId or key) -->
+      <section id="viewInvalid" class="state" hidden>
+        <div class="state-icon warn" aria-hidden="true"><svg class="ic"><use href="#i-alert"/></svg></div>
+        <h1>Invalid link</h1>
+        <p>This link is invalid. Please open the appointment in GHL.</p>
       </section>
 
       <!-- STATE 2: the request to review -->
-      <section id="viewRequest" hidden>
-        <h1>Appointment request</h1>
+      <div id="viewRequest" hidden>
+        <section class="section">
+          <span class="pill"><span class="dot" aria-hidden="true"></span>Awaiting approval</span>
+          <h1>Appointment request</h1>
+          <p class="lede">Review the details, then approve or reject.</p>
 
-        <!-- Filled in by the script, using textContent only -->
-        <dl class="details" id="details"></dl>
-
-        <!-- Main buttons -->
-        <div class="actions" id="actions">
-          <button type="button" class="btn btn-approve" id="approveBtn">Approve</button>
-          <button type="button" class="btn btn-reject" id="rejectBtn">Reject</button>
-        </div>
-
-        <!-- Inline confirmation step for rejecting -->
-        <div class="reject-step" id="rejectStep" hidden>
-          <h2 id="rejectHeading" tabindex="-1">Reject this appointment?</h2>
-          <label for="reason">Reason <span class="optional">(optional, may be shared with the customer)</span></label>
-          <textarea id="reason" maxlength="500" rows="3"></textarea>
-          <div class="stack">
-            <button type="button" class="btn btn-reject solid" id="confirmRejectBtn">Confirm rejection</button>
-            <button type="button" class="btn btn-plain" id="cancelRejectBtn">Go back</button>
+          <!-- Date / time / service. Filled by the script with textContent only. -->
+          <div class="when" id="whenBlock" hidden>
+            <div class="when-main" id="whenMain" hidden>
+              <svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg>
+              <div>
+                <div class="when-date" id="whenDate"></div>
+                <div class="when-time" id="whenTime"></div>
+              </div>
+            </div>
+            <div class="when-service" id="whenService" hidden>
+              <svg class="ic" aria-hidden="true"><use href="#i-sparkle"/></svg>
+              <span id="whenServiceText"></span>
+            </div>
           </div>
-        </div>
+        </section>
 
-        <!-- Error with Retry. role="alert" makes screen readers announce it. -->
-        <div class="error-box" id="errorBox" role="alert" hidden>
-          <p id="errorText" tabindex="-1"></p>
-          <button type="button" class="btn btn-plain" id="retryBtn">Retry</button>
-        </div>
+        <!-- Customer, staff, notes -->
+        <section class="section" id="peopleSection" hidden>
+          <p class="label">Customer</p>
+          <div class="person" id="person" hidden>
+            <div class="avatar" id="avatar" aria-hidden="true"></div>
+            <div>
+              <div class="person-name" id="personName"></div>
+              <a class="person-phone" id="personPhone" hidden>
+                <svg class="ic" aria-hidden="true"><use href="#i-phone"/></svg><span></span>
+              </a>
+            </div>
+          </div>
+          <dl class="meta" id="meta" hidden></dl>
+        </section>
 
-        <!-- Progress messages for screen readers and sighted users -->
-        <p class="status" id="status" aria-live="polite"></p>
-      </section>
+        <!-- Actions -->
+        <section class="section">
+          <!-- Error with Retry. role="alert" makes screen readers announce it. -->
+          <div class="error-box" id="errorBox" role="alert" hidden>
+            <svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>
+            <div>
+              <p id="errorText" tabindex="-1"></p>
+              <button type="button" class="btn btn-ghost" id="retryBtn">Retry</button>
+            </div>
+          </div>
+
+          <div class="actions" id="actions">
+            <button type="button" class="btn btn-approve" id="approveBtn">
+              <svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span>Approve</span>
+            </button>
+            <button type="button" class="btn btn-reject" id="rejectBtn">
+              <svg class="ic" aria-hidden="true"><use href="#i-x"/></svg><span>Reject</span>
+            </button>
+          </div>
+
+          <!-- Inline confirmation step for rejecting -->
+          <div class="reject-step" id="rejectStep" hidden>
+            <h2 id="rejectHeading" tabindex="-1">Reject this appointment?</h2>
+            <p class="lede">The appointment will be cancelled in GHL.</p>
+            <label for="reason">Reason <span class="optional">(optional)</span></label>
+            <textarea id="reason" maxlength="500" rows="3" placeholder="e.g. No therapist available at that time" aria-describedby="reasonHint"></textarea>
+            <p class="hint" id="reasonHint">May be shared with the customer.</p>
+            <div class="actions">
+              <button type="button" class="btn btn-reject solid" id="confirmRejectBtn">Confirm rejection</button>
+              <button type="button" class="btn btn-ghost" id="cancelRejectBtn">Go back</button>
+            </div>
+          </div>
+
+          <!-- Progress messages for screen readers and sighted users -->
+          <p class="status" id="status" aria-live="polite"></p>
+        </section>
+      </div>
 
       <!-- STATE 3: final result -->
-      <section id="viewResult" class="result" hidden>
-        <div class="result-icon" id="resultIcon" aria-hidden="true"></div>
+      <section id="viewResult" class="state" hidden>
+        <div class="state-icon" id="resultIcon" aria-hidden="true"><svg class="ic"><use id="resultIconUse" href="#i-check"/></svg></div>
         <h1 id="resultTitle" tabindex="-1"></h1>
-        <p id="resultText" class="muted"></p>
-        <div id="resultReason" class="reason-box" hidden></div>
-        <p id="resultNote" class="muted small" hidden></p>
+        <p id="resultText"></p>
+        <div class="recap" id="resultRecap" hidden>
+          <div class="recap-title" id="recapTitle"></div>
+          <div class="recap-sub" id="recapSub"></div>
+        </div>
+        <div class="reason-box" id="resultReason" hidden><strong>Reason</strong><span id="resultReasonText"></span></div>
+        <p class="fine" id="resultNote" hidden></p>
       </section>
 
       <noscript>
-        <p>This page needs JavaScript to record your decision. Please enable it, or update the appointment in GHL.</p>
+        <section class="state"><p>This page needs JavaScript to record your decision. Please enable it, or update the appointment in GHL.</p></section>
       </noscript>
-    </div>
-  </main>
+    </main>
+
+    <p class="foot"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><span id="footText">Private staff link. Please don't forward it.</span></p>
+  </div>
 
   <script>
   (function () {
@@ -342,7 +587,7 @@
        CONFIGURATION - edit these values before going live.
        ================================================================= */
 
-    // Shown at the top of the card. Leave the placeholder or "" to hide it.
+    // Shown at the top of the page. Leave the placeholder or "" to show "Staff portal".
     const BUSINESS_NAME = "[BUSINESS NAME]";
 
     // The server function that updates the appointment in GHL (api/decision.js).
@@ -354,8 +599,8 @@
     // Full https:// URL to your logo. Leave "" to skip the logo.
     const LOGO_URL = "";
 
-    // Brand colors as hex, e.g. "#1f4e79". Primary = top bar + business name,
-    // accent = keyboard focus ring. Approve/Reject stay green/red on purpose.
+    // Brand colors as hex, e.g. "#1f4e79". Primary = date panel, avatar and
+    // icons; accent = keyboard focus ring. Approve/Reject stay green/red on purpose.
     const BRAND_PRIMARY = "#1f4e79";
     const BRAND_ACCENT  = "#2563eb";
 
@@ -386,6 +631,10 @@
     function show(el) { el.hidden = false; }
     function hide(el) { el.hidden = true; }
 
+    // Set text safely. textContent never interprets HTML, so values from the
+    // URL can't inject markup or scripts (no innerHTML anywhere in this file).
+    function setText(el, value) { el.textContent = value; }
+
     // localStorage can throw (private mode, blocked storage), so always wrap it.
     function storageKey(id) { return "staff-approval:" + id; }
     function loadResult(id) {
@@ -402,25 +651,28 @@
 
     (function applyBranding() {
       const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
-      if (hex.test(BRAND_PRIMARY)) document.documentElement.style.setProperty("--brand-primary", BRAND_PRIMARY);
-      if (hex.test(BRAND_ACCENT))  document.documentElement.style.setProperty("--brand-accent", BRAND_ACCENT);
+      if (hex.test(BRAND_PRIMARY)) document.documentElement.style.setProperty("--brand", BRAND_PRIMARY);
+      if (hex.test(BRAND_ACCENT))  document.documentElement.style.setProperty("--accent", BRAND_ACCENT);
 
       const hasName = !isUnset(BUSINESS_NAME);
       const hasLogo = !isUnset(LOGO_URL);
 
       if (hasName) {
-        $("brandName").textContent = BUSINESS_NAME;
-        document.title = "Appointment approval - " + BUSINESS_NAME;
+        setText($("brandName"), BUSINESS_NAME);
+        setText($("footText"), "Private link for " + BUSINESS_NAME + " staff. Please don't forward it.");
+        document.title = "Appointment approval · " + BUSINESS_NAME;
       }
       if (hasLogo) {
         const img = $("brandLogo");
-        img.alt = hasName ? BUSINESS_NAME + " logo" : "Logo";
-        img.addEventListener("error", () => hide(img)); // hide a broken logo
+        img.alt = hasName ? BUSINESS_NAME : "Logo";
+        img.addEventListener("error", () => {           // broken logo: fall back to the name
+          hide(img);
+          $("brandName").classList.remove("sr-only");
+        });
         img.src = LOGO_URL;
         show(img);
-        if (hasName) $("brandName").classList.add("sr-only"); // logo already names the business
+        $("brandName").classList.add("sr-only");        // the logo already names the business
       }
-      if (hasName || hasLogo) show($("brand"));
     })();
 
 
@@ -432,85 +684,149 @@
     // It is not in this file, so someone who only finds the page can't use it.
     const linkKey       = param("key");
 
-    // Optional display-only fields, in the order they appear on the card.
-    const displayFields = [
-      ["Customer", param("customerName")],
-      ["Service",  param("service")],
-      ["Date",     param("date")],
-      ["Time",     param("time")],
-      ["Staff",    param("staffName")],
-      ["Phone",    param("phone")],
-      ["Notes",    param("notes")]
-    ];
+    // Optional, display only.
+    const info = {
+      customerName: param("customerName"),
+      service:      param("service"),
+      date:         param("date"),
+      time:         param("time"),
+      staffName:    param("staffName"),
+      phone:        param("phone"),
+      notes:        param("notes")
+    };
 
 
     // ---------- Views ----------
 
-    function showInvalid() {
-      show($("viewInvalid"));
+    function initials(name) {
+      const parts = name.split(/\s+/).filter(Boolean);
+      const first = parts[0] ? parts[0][0] : "";
+      const last  = parts.length > 1 ? parts[parts.length - 1][0] : "";
+      return (first + last).toUpperCase();
+    }
+
+    // Build <svg class="ic"><use href="#iconId"/></svg> from the sprite above.
+    function makeIcon(iconId) {
+      const ns = "http://www.w3.org/2000/svg";
+      const svg = document.createElementNS(ns, "svg");
+      svg.setAttribute("class", "ic");
+      svg.setAttribute("aria-hidden", "true");
+      const use = document.createElementNS(ns, "use");
+      use.setAttribute("href", "#" + iconId);
+      svg.appendChild(use);
+      return svg;
+    }
+
+    function addMeta(dl, iconId, label, value) {
+      const row = document.createElement("div");
+      row.className = "meta-row";
+      const svg = makeIcon(iconId);
+
+      const wrap = document.createElement("div");
+      const dt = document.createElement("dt");
+      const dd = document.createElement("dd");
+      setText(dt, label);
+      setText(dd, value);
+      wrap.append(dt, dd);
+
+      row.append(svg, wrap);
+      dl.appendChild(row);
     }
 
     function renderDetails() {
-      const dl = $("details");
-      displayFields.forEach(([label, value]) => {
-        if (!value) return;
-        const row = document.createElement("div");
-        const dt = document.createElement("dt");
-        const dd = document.createElement("dd");
-        dt.textContent = label;
+      // Date / time / service panel
+      if (info.date || info.time) {
+        setText($("whenDate"), info.date || info.time);
+        setText($("whenTime"), info.date ? info.time : "");
+        show($("whenMain"));
+      }
+      if (info.service) {
+        setText($("whenServiceText"), info.service);
+        show($("whenService"));
+        if (!info.date && !info.time) $("whenService").style.cssText = "margin-top:0;padding-top:0;border-top:0";
+      }
+      if (info.date || info.time || info.service) show($("whenBlock"));
 
-        if (label === "Phone") {
-          // Tap-to-call link. Only digits and "+" go into the href; the text is shown as-is.
-          const a = document.createElement("a");
-          a.href = "tel:" + value.replace(/[^\d+]/g, "");
-          a.textContent = value;
-          dd.appendChild(a);
+      // Customer
+      if (info.customerName || info.phone) {
+        const name = info.customerName || "Customer";
+        setText($("personName"), name);
+        const ini = info.customerName ? initials(info.customerName) : "";
+        if (ini) {
+          setText($("avatar"), ini);
         } else {
-          dd.textContent = value; // textContent, never innerHTML: URL values can't inject HTML
+          $("avatar").appendChild(makeIcon("i-user"));
         }
+        if (info.phone) {
+          const a = $("personPhone");
+          // Tap-to-call. Only digits and "+" go into the href; the text is shown as-is.
+          a.href = "tel:" + info.phone.replace(/[^\d+]/g, "");
+          setText(a.querySelector("span"), info.phone);
+          show(a);
+        }
+        show($("person"));
+      }
 
-        row.append(dt, dd);
-        dl.appendChild(row);
-      });
-      if (!dl.children.length) hide(dl); // nothing optional was passed
+      // Staff + notes
+      const dl = $("meta");
+      if (info.staffName) addMeta(dl, "i-user", "Staff", info.staffName);
+      if (info.notes)     addMeta(dl, "i-note", "Customer notes", info.notes);
+      if (dl.children.length) show(dl);
+
+      if (info.customerName || info.phone || dl.children.length) {
+        if (!info.customerName && !info.phone) setText($("peopleSection").querySelector(".label"), "Details");
+        show($("peopleSection"));
+      }
+    }
+
+    function showInvalid() {
+      show($("viewInvalid"));
     }
 
     // data.action is "approved", "rejected", or "already" (someone else decided first).
     function showResult(data, fromStorage) {
       hide($("viewRequest"));
       const icon = $("resultIcon");
+      const use = $("resultIconUse");
 
       if (data.action === "already") {
         const s = data.currentStatus || "";
-        icon.className = "result-icon warn";
-        icon.textContent = "i";
-        $("resultTitle").textContent = "Already handled";
-        $("resultText").textContent =
+        icon.className = "state-icon warn";
+        use.setAttribute("href", "#i-info");
+        setText($("resultTitle"), "Already handled");
+        setText($("resultText"),
           s === "confirmed" ? "This appointment has already been confirmed. No changes were made." :
           s === "cancelled" ? "This appointment has already been cancelled. No changes were made." :
-          "This appointment is no longer pending" + (s ? " (status: " + s + ")" : "") + ". No changes were made.";
+          "This appointment is no longer pending" + (s ? " (status: " + s + ")" : "") + ". No changes were made.");
       } else {
         const approved = data.action === "approved";
-        icon.className = "result-icon " + (approved ? "ok" : "no");
-        icon.textContent = approved ? "✓" : "✕"; // check / cross
-
-        $("resultTitle").textContent = approved ? "Appointment approved" : "Appointment rejected";
-        $("resultText").textContent = approved
-          ? "Appointment approved. The customer will be notified."
-          : "Appointment rejected.";
+        icon.className = "state-icon " + (approved ? "ok" : "no");
+        use.setAttribute("href", approved ? "#i-check" : "#i-x");
+        setText($("resultTitle"), approved ? "Appointment approved" : "Appointment rejected");
+        setText($("resultText"), approved
+          ? "The customer will be notified."
+          : "The appointment has been cancelled.");
 
         if (!approved && data.reason) {
-          $("resultReason").textContent = "Reason: " + data.reason;
+          setText($("resultReasonText"), data.reason);
           show($("resultReason"));
         }
       }
 
-      const notes = [];
-      if (fromStorage && data.at) {
-        notes.push("Recorded from this device on " + new Date(data.at).toLocaleString() + ".");
+      // Recap of which appointment this was, from the link's display fields.
+      const lines = [
+        info.customerName,
+        info.service,
+        [info.date, info.time].filter(Boolean).join(" · ")
+      ].filter(Boolean);
+      if (lines.length) {
+        setText($("recapTitle"), lines[0]);
+        setText($("recapSub"), lines.slice(1).join("\n"));
+        show($("resultRecap"));
       }
-      if (notes.length) {
-        $("resultNote").textContent = notes.join(" ");
+
+      if (fromStorage && data.at) {
+        setText($("resultNote"), "Recorded from this device on " + new Date(data.at).toLocaleString() + ".");
         show($("resultNote"));
       }
 
@@ -599,23 +915,23 @@
     const reasonInput      = $("reason");
     const statusEl         = $("status");
 
-    let sending = false;   // blocks double clicks while a request is in flight
+    let sending = false;    // blocks double clicks while a request is in flight
     let lastAttempt = null; // { action, reason, button } for Retry
 
+    // Disable everything while sending and show a spinner in the clicked button.
     function setBusy(button, busy, busyLabel) {
       [approveBtn, rejectBtn, confirmRejectBtn, cancelRejectBtn, retryBtn, reasonInput]
         .forEach((el) => { el.disabled = busy; });
 
       if (busy) {
-        button.dataset.label = button.textContent;
-        button.textContent = "";
+        button._original = Array.from(button.childNodes);
         const spin = document.createElement("span");
         spin.className = "spinner";
         spin.setAttribute("aria-hidden", "true");
-        button.append(spin, document.createTextNode(busyLabel));
+        button.replaceChildren(spin, document.createTextNode(busyLabel));
         button.setAttribute("aria-busy", "true");
-      } else if (button.dataset.label) {
-        button.textContent = button.dataset.label;
+      } else if (button._original) {
+        button.replaceChildren.apply(button, button._original);
         button.removeAttribute("aria-busy");
       }
     }
@@ -626,7 +942,7 @@
       lastAttempt = { action, reason, button };
 
       hide($("errorBox"));
-      statusEl.textContent = "Sending your decision…";
+      setText(statusEl, "Sending your decision…");
       setBusy(button, true, action === "approved" ? "Approving…" : "Rejecting…");
 
       const payload = {
@@ -649,7 +965,7 @@
       function finish(record) {
         record.at = new Date().toISOString();
         saveResult(appointmentId, record);
-        statusEl.textContent = "";
+        setText(statusEl, "");
         showResult(record, false); // buttons are gone from here on
       }
 
@@ -666,12 +982,12 @@
 
         // Never show success on failure. Re-enable buttons and explain.
         setBusy(button, false);
-        statusEl.textContent = "";
-        const info = describeError(err);
-        $("errorText").textContent = info.text;
-        retryBtn.hidden = !info.retry;
+        setText(statusEl, "");
+        const e = describeError(err);
+        setText($("errorText"), e.text);
+        retryBtn.hidden = !e.retry;
         show($("errorBox"));
-        (info.retry ? retryBtn : $("errorText")).focus();
+        (e.retry ? retryBtn : $("errorText")).focus();
       } finally {
         sending = false;
       }
