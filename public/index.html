@@ -400,6 +400,12 @@
     }
     .foot .ic { width: 14px; height: 14px; }
 
+    /* Loading + "try again" on the message view */
+    .state-icon.loading { background: var(--surface-2); color: var(--muted); }
+    .state-icon.loading .spinner { width: 26px; height: 26px; border-width: 3px; }
+    .retry-load { width: auto; margin-top: 18px; padding: 10px 22px; min-height: 44px; }
+    #viewMessage > p:empty { display: none; }
+
     [hidden] { display: none !important; }
     .sr-only {
       position: absolute;
@@ -418,7 +424,6 @@
     <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></symbol>
     <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></symbol>
     <symbol id="i-phone" viewBox="0 0 24 24"><path d="M21 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 1.1 4.2 2 2 0 0 1 3.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L7 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z"/></symbol>
-    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
     <symbol id="i-note" viewBox="0 0 24 24"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
@@ -440,23 +445,23 @@
 
     <main class="card">
 
-      <!-- STATE 1: invalid link (missing appointmentId/bookingId, contactId or key) -->
-      <section id="viewInvalid" class="state" hidden>
-        <div class="state-icon warn" aria-hidden="true"><svg class="ic"><use href="#i-alert"/></svg></div>
-        <h1>Invalid link</h1>
-        <p>This link is invalid. Please open the appointment in GHL.</p>
+      <!-- Loading / invalid link / not found / load error -->
+      <section id="viewMessage" class="state" aria-live="polite">
+        <div class="state-icon loading" id="msgIcon" aria-hidden="true"><span class="spinner"></span></div>
+        <h1 id="msgTitle">Loading appointment&hellip;</h1>
+        <p id="msgText"></p>
+        <button type="button" class="btn btn-ghost retry-load" id="reloadBtn" hidden>Try again</button>
       </section>
 
-      <!-- STATE 2: the request to review -->
+      <!-- The request to review -->
       <div id="viewRequest" hidden>
         <section class="section">
           <span class="pill"><span class="dot" aria-hidden="true"></span>Awaiting approval</span>
           <h1>Appointment request</h1>
           <p class="lede">Review the details, then approve or reject.</p>
 
-          <!-- Date / time / service. Filled by the script with textContent only. -->
-          <div class="when" id="whenBlock" hidden>
-            <div class="when-main" id="whenMain" hidden>
+          <div class="when">
+            <div class="when-main">
               <svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg>
               <div>
                 <div class="when-date" id="whenDate"></div>
@@ -470,10 +475,9 @@
           </div>
         </section>
 
-        <!-- Customer, staff, notes -->
-        <section class="section" id="peopleSection" hidden>
+        <section class="section">
           <p class="label">Customer</p>
-          <div class="person" id="person" hidden>
+          <div class="person">
             <div class="avatar" id="avatar" aria-hidden="true"></div>
             <div>
               <div class="person-name" id="personName"></div>
@@ -482,10 +486,14 @@
               </a>
             </div>
           </div>
-          <dl class="meta" id="meta" hidden></dl>
+          <dl class="meta" id="notesRow" hidden>
+            <div class="meta-row">
+              <svg class="ic" aria-hidden="true"><use href="#i-note"/></svg>
+              <div><dt>Customer notes</dt><dd id="notesText"></dd></div>
+            </div>
+          </dl>
         </section>
 
-        <!-- Actions -->
         <section class="section">
           <!-- Error with Retry. role="alert" makes screen readers announce it. -->
           <div class="error-box" id="errorBox" role="alert" hidden>
@@ -505,7 +513,7 @@
             </button>
           </div>
 
-          <!-- Inline confirmation step for rejecting -->
+          <!-- Inline confirmation step, so a booking isn't rejected by accident -->
           <div class="reject-step" id="rejectStep" hidden>
             <h2 id="rejectHeading" tabindex="-1">Reject this appointment?</h2>
             <p class="lede">The appointment will be cancelled in GHL.</p>
@@ -515,12 +523,11 @@
             </div>
           </div>
 
-          <!-- Progress messages for screen readers and sighted users -->
           <p class="status" id="status" aria-live="polite"></p>
         </section>
       </div>
 
-      <!-- STATE 3: final result -->
+      <!-- Final result (after a decision, or when the appointment was already decided) -->
       <section id="viewResult" class="state" hidden>
         <div class="state-icon" id="resultIcon" aria-hidden="true"><svg class="ic"><use id="resultIconUse" href="#i-check"/></svg></div>
         <h1 id="resultTitle" tabindex="-1"></h1>
@@ -529,11 +536,10 @@
           <div class="recap-title" id="recapTitle"></div>
           <div class="recap-sub" id="recapSub"></div>
         </div>
-        <p class="fine" id="resultNote" hidden></p>
       </section>
 
       <noscript>
-        <section class="state"><p>This page needs JavaScript to record your decision. Please enable it, or update the appointment in GHL.</p></section>
+        <section class="state"><p>This page needs JavaScript. Please enable it, or update the appointment in GHL.</p></section>
       </noscript>
     </main>
 
@@ -551,19 +557,17 @@
     // Shown at the top of the page. Leave the placeholder or "" to show "Staff portal".
     const BUSINESS_NAME = "[BUSINESS NAME]";
 
-    // The server function that updates the appointment in GHL (api/decision.js).
-    // Same domain as this page, so no CORS setup is needed.
-    // The GHL token lives ONLY in the server's environment variables - never
-    // put it in this file, because anyone with a link can read the page source.
-    const API_URL = "/api/decision";
-
     // Full https:// URL to your logo. Leave "" to skip the logo.
     const LOGO_URL = "";
 
-    // Brand colors as hex, e.g. "#1f4e79". Primary = date panel, avatar and
-    // icons; accent = keyboard focus ring. Approve/Reject stay green/red on purpose.
+    // Brand colors as hex. Primary = date panel, avatar and icons;
+    // accent = keyboard focus ring. Approve/Reject stay green/red on purpose.
     const BRAND_PRIMARY = "#1f4e79";
     const BRAND_ACCENT  = "#2563eb";
+
+    // Server function (api/decision.js). It holds the GHL token - never put
+    // the token in this file, because anyone with a link can read the source.
+    const API_URL = "/api/decision";
 
     // How long to wait for the server before showing an error.
     const REQUEST_TIMEOUT_MS = 20000;
@@ -571,40 +575,22 @@
     /* ================================================================= */
 
 
-    // ---------- Small helpers ----------
+    // ---------- Helpers ----------
 
     const $ = (id) => document.getElementById(id);
+    const show = (el) => { el.hidden = false; };
+    const hide = (el) => { el.hidden = true; };
 
-    // A value counts as "not set" if it is empty or still a [PLACEHOLDER].
-    function isUnset(value) {
-      return !value || /^\[.*\]$/.test(value.trim());
-    }
+    // textContent never interprets HTML, so data can't inject markup or scripts.
+    const setText = (el, value) => { el.textContent = value; };
 
-    // Read a query-string parameter. URLSearchParams already decodes %20 etc.
-    // If GHL could not fill a merge field it may leave "{{appointment.id}}"
-    // in the link, so treat anything containing "{{" as missing.
+    const isUnset = (v) => !v || /^\[.*\]$/.test(v.trim());
+
+    // Read a query-string parameter. Values GHL couldn't fill ("{{...}}") count as missing.
     const params = new URLSearchParams(window.location.search);
     function param(name) {
       const raw = (params.get(name) || "").trim();
       return raw.includes("{{") ? "" : raw;
-    }
-
-    function show(el) { el.hidden = false; }
-    function hide(el) { el.hidden = true; }
-
-    // Set text safely. textContent never interprets HTML, so values from the
-    // URL can't inject markup or scripts (no innerHTML anywhere in this file).
-    function setText(el, value) { el.textContent = value; }
-
-    // localStorage can throw (private mode, blocked storage), so always wrap it.
-    function storageKey(id) { return "staff-approval:" + id; }
-    function loadResult(id) {
-      try { return JSON.parse(localStorage.getItem(storageKey(id)) || "null"); }
-      catch (e) { return null; }
-    }
-    function saveResult(id, data) {
-      try { localStorage.setItem(storageKey(id), JSON.stringify(data)); }
-      catch (e) { /* storage unavailable: the page still works, refresh just won't remember */ }
     }
 
 
@@ -616,188 +602,34 @@
       if (hex.test(BRAND_ACCENT))  document.documentElement.style.setProperty("--accent", BRAND_ACCENT);
 
       const hasName = !isUnset(BUSINESS_NAME);
-      const hasLogo = !isUnset(LOGO_URL);
-
       if (hasName) {
         setText($("brandName"), BUSINESS_NAME);
         setText($("footText"), "Private link for " + BUSINESS_NAME + " staff. Please don't forward it.");
         document.title = "Appointment approval · " + BUSINESS_NAME;
       }
-      if (hasLogo) {
+      if (!isUnset(LOGO_URL)) {
         const img = $("brandLogo");
         img.alt = hasName ? BUSINESS_NAME : "Logo";
-        img.addEventListener("error", () => {           // broken logo: fall back to the name
-          hide(img);
-          $("brandName").classList.remove("sr-only");
-        });
+        img.addEventListener("error", () => { hide(img); $("brandName").classList.remove("sr-only"); });
         img.src = LOGO_URL;
         show(img);
-        $("brandName").classList.add("sr-only");        // the logo already names the business
+        $("brandName").classList.add("sr-only"); // the logo already names the business
       }
     })();
 
 
-    // ---------- Read the URL ----------
+    // ---------- Link parameters ----------
+    // Link format: ?appointmentId={{appointment.id}}&contactId={{contact.id}}
+    // Both are required: the server checks the contact owns the appointment.
+    // Everything shown on the page is loaded from GHL, not taken from the link.
 
-    // Either the calendar appointment ID ({{appointment.id}} in GHL emails) or
-    // the Service Menu booking ID. The server finds the booking from either.
     const appointmentId = param("appointmentId");
-    const bookingId     = param("bookingId");
-    const recordId      = bookingId || appointmentId; // used for "remember on this device"
     const contactId     = param("contactId");
-    // Static secret added to the link in the staff email (LINK_KEY on the server).
-    // It is not in this file, so someone who only finds the page can't use it.
-    const linkKey       = param("key");
 
-    // Optional, display only.
-    const info = {
-      customerName: param("customerName"),
-      service:      param("service"),
-      date:         param("date"),
-      time:         param("time"),
-      staffName:    param("staffName"),
-      phone:        param("phone"),
-      notes:        param("notes")
-    };
+    let details = null; // appointment details loaded from GHL
 
 
-    // ---------- Views ----------
-
-    function initials(name) {
-      const parts = name.split(/\s+/).filter(Boolean);
-      const first = parts[0] ? parts[0][0] : "";
-      const last  = parts.length > 1 ? parts[parts.length - 1][0] : "";
-      return (first + last).toUpperCase();
-    }
-
-    // Build <svg class="ic"><use href="#iconId"/></svg> from the sprite above.
-    function makeIcon(iconId) {
-      const ns = "http://www.w3.org/2000/svg";
-      const svg = document.createElementNS(ns, "svg");
-      svg.setAttribute("class", "ic");
-      svg.setAttribute("aria-hidden", "true");
-      const use = document.createElementNS(ns, "use");
-      use.setAttribute("href", "#" + iconId);
-      svg.appendChild(use);
-      return svg;
-    }
-
-    function addMeta(dl, iconId, label, value) {
-      const row = document.createElement("div");
-      row.className = "meta-row";
-      const svg = makeIcon(iconId);
-
-      const wrap = document.createElement("div");
-      const dt = document.createElement("dt");
-      const dd = document.createElement("dd");
-      setText(dt, label);
-      setText(dd, value);
-      wrap.append(dt, dd);
-
-      row.append(svg, wrap);
-      dl.appendChild(row);
-    }
-
-    function renderDetails() {
-      // Date / time / service panel
-      if (info.date || info.time) {
-        setText($("whenDate"), info.date || info.time);
-        setText($("whenTime"), info.date ? info.time : "");
-        show($("whenMain"));
-      }
-      if (info.service) {
-        setText($("whenServiceText"), info.service);
-        show($("whenService"));
-        if (!info.date && !info.time) $("whenService").style.cssText = "margin-top:0;padding-top:0;border-top:0";
-      }
-      if (info.date || info.time || info.service) show($("whenBlock"));
-
-      // Customer
-      if (info.customerName || info.phone) {
-        const name = info.customerName || "Customer";
-        setText($("personName"), name);
-        const ini = info.customerName ? initials(info.customerName) : "";
-        if (ini) {
-          setText($("avatar"), ini);
-        } else {
-          $("avatar").appendChild(makeIcon("i-user"));
-        }
-        if (info.phone) {
-          const a = $("personPhone");
-          // Tap-to-call. Only digits and "+" go into the href; the text is shown as-is.
-          a.href = "tel:" + info.phone.replace(/[^\d+]/g, "");
-          setText(a.querySelector("span"), info.phone);
-          show(a);
-        }
-        show($("person"));
-      }
-
-      // Staff + notes
-      const dl = $("meta");
-      if (info.staffName) addMeta(dl, "i-user", "Staff", info.staffName);
-      if (info.notes)     addMeta(dl, "i-note", "Customer notes", info.notes);
-      if (dl.children.length) show(dl);
-
-      if (info.customerName || info.phone || dl.children.length) {
-        if (!info.customerName && !info.phone) setText($("peopleSection").querySelector(".label"), "Details");
-        show($("peopleSection"));
-      }
-    }
-
-    function showInvalid() {
-      show($("viewInvalid"));
-    }
-
-    // data.action is "approved", "rejected", or "already" (someone else decided first).
-    function showResult(data, fromStorage) {
-      hide($("viewRequest"));
-      const icon = $("resultIcon");
-      const use = $("resultIconUse");
-
-      if (data.action === "already") {
-        const s = data.currentStatus || "";
-        icon.className = "state-icon warn";
-        use.setAttribute("href", "#i-info");
-        setText($("resultTitle"), "Already handled");
-        setText($("resultText"),
-          s === "confirmed" ? "This appointment has already been confirmed. No changes were made." :
-          s === "cancelled" ? "This appointment has already been cancelled. No changes were made." :
-          "This appointment is no longer pending" + (s ? " (status: " + s + ")" : "") + ". No changes were made.");
-      } else {
-        const approved = data.action === "approved";
-        icon.className = "state-icon " + (approved ? "ok" : "no");
-        use.setAttribute("href", approved ? "#i-check" : "#i-x");
-        setText($("resultTitle"), approved ? "Appointment approved" : "Appointment rejected");
-        setText($("resultText"), approved
-          ? "The customer will be notified."
-          : "The appointment has been cancelled.");
-      }
-
-      // Recap of which appointment this was, from the link's display fields.
-      const lines = [
-        info.customerName,
-        info.service,
-        [info.date, info.time].filter(Boolean).join(" · ")
-      ].filter(Boolean);
-      if (lines.length) {
-        setText($("recapTitle"), lines[0]);
-        setText($("recapSub"), lines.slice(1).join("\n"));
-        show($("resultRecap"));
-      }
-
-      if (fromStorage && data.at) {
-        setText($("resultNote"), "Recorded from this device on " + new Date(data.at).toLocaleString() + ".");
-        show($("resultNote"));
-      }
-
-      show($("viewResult"));
-      // Move focus to the result after a submit so screen readers announce it.
-      // (Not on page load, where focus jumps would be unexpected.)
-      if (!fromStorage) $("resultTitle").focus();
-    }
-
-
-    // ---------- Sending ----------
+    // ---------- Server calls ----------
 
     class HttpError extends Error {
       constructor(status, data) {
@@ -808,68 +640,151 @@
       }
     }
 
-    // fetch() with a timeout (fetch has none by default).
-    function fetchWithTimeout(url, options) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-      return fetch(url, Object.assign({}, options, { signal: controller.signal }))
-        .finally(() => clearTimeout(timer));
-    }
-
-    /*
-     * Send the decision to our server function, which updates GHL.
-     * Resolves with the server's JSON on success (HTTP 2xx), otherwise throws.
-     * Success is only shown when the server confirms GHL accepted the update.
-     */
-    async function sendDecision(payload) {
+    // fetch() with a timeout; resolves with the JSON body or throws.
+    async function call(url, options) {
       if (navigator.onLine === false) {
         const e = new Error("offline"); e.name = "OfflineError"; throw e;
       }
-
-      const res = await fetchWithTimeout(API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      let data = {};
-      try { data = await res.json(); } catch (e) { /* non-JSON reply */ }
-
-      if (!res.ok || !data.ok) throw new HttpError(res.status, data);
-      return data;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      try {
+        const res = await fetch(url, Object.assign({ cache: "no-store" }, options, { signal: controller.signal }));
+        let data = {};
+        try { data = await res.json(); } catch (e) { /* non-JSON reply */ }
+        if (!res.ok || !data.ok) throw new HttpError(res.status, data);
+        return data;
+      } finally {
+        clearTimeout(timer);
+      }
     }
 
-    // Returns { text, retry } - retry=false hides the Retry button when trying
-    // again can't help (bad link, appointment missing).
+    // Returns { text, retry }. retry=false when trying again can't help.
     function describeError(err) {
       const name = err && err.name;
-      if (name === "OfflineError") {
-        return { retry: true, text: "You appear to be offline. Check your connection, then tap Retry." };
-      }
-      if (name === "AbortError") {
-        return { retry: true, text: "The server took too long to respond, so we can't be sure your decision was saved. Tap Retry - it's safe, because an appointment that was already updated won't be changed twice." };
-      }
+      if (name === "OfflineError") return { retry: true, text: "You appear to be offline. Check your connection, then try again." };
+      if (name === "AbortError")   return { retry: true, text: "The server took too long to respond. Please try again." };
       if (name === "HttpError") {
-        switch (err.status) {
-          case 403:
-            return { retry: false, text: "This link isn't valid for this appointment. Please open the appointment in GHL." };
-          case 404:
-            return { retry: false, text: "This appointment wasn't found in GHL. It may have been deleted. Please check it in GHL." };
-          case 400:
-            return { retry: false, text: "This link is incomplete. Please open the appointment in GHL." };
-          default: {
-            // Include GHL's own reason (from api/decision.js) to make problems easy to diagnose.
-            const d = err.data || {};
-            const why = d.ghlMessage ? " GHL said: “" + d.ghlMessage + "”" + (d.ghlStatus ? " (" + d.ghlStatus + ")" : "") + "." : "";
-            return { retry: true, text: "The decision couldn't be saved in GHL (error " + err.status + ")." + why + " Tap Retry. If it keeps failing, update the appointment in GHL directly." };
-          }
-        }
+        if (err.status === 403) return { retry: false, text: "This link isn't valid for this appointment. Please open the appointment in GHL." };
+        if (err.status === 404) return { retry: false, text: "This appointment wasn't found in GHL. It may have been deleted." };
+        if (err.status === 400) return { retry: false, text: "This link is incomplete. Please open the appointment in GHL." };
+        const d = err.data || {};
+        const why = d.ghlMessage ? " GHL said: “" + d.ghlMessage + "”" + (d.ghlStatus ? " (" + d.ghlStatus + ")" : "") + "." : "";
+        return { retry: true, text: "Something went wrong in GHL (error " + err.status + ")." + why + " Please try again." };
       }
-      return { retry: true, text: "We couldn't reach the server. Check your connection, then tap Retry." };
+      return { retry: true, text: "We couldn't reach the server. Check your connection, then try again." };
     }
 
 
-    // ---------- Interaction ----------
+    // ---------- Views ----------
+
+    function makeIcon(iconId) {
+      const ns = "http://www.w3.org/2000/svg";
+      const svg = document.createElementNS(ns, "svg");
+      svg.setAttribute("class", "ic");
+      const use = document.createElementNS(ns, "use");
+      use.setAttribute("href", "#" + iconId);
+      svg.appendChild(use);
+      return svg;
+    }
+
+    // Loading spinner, or a warning with an optional "Try again" button.
+    function showMessage(kind, title, text, canRetry) {
+      hide($("viewRequest"));
+      hide($("viewResult"));
+      const icon = $("msgIcon");
+      icon.className = "state-icon " + kind;
+      if (kind === "loading") {
+        const spin = document.createElement("span");
+        spin.className = "spinner";
+        icon.replaceChildren(spin);
+      } else {
+        icon.replaceChildren(makeIcon("i-alert"));
+      }
+      setText($("msgTitle"), title);
+      setText($("msgText"), text || "");
+      $("reloadBtn").hidden = !canRetry;
+      show($("viewMessage"));
+    }
+
+    function initials(name) {
+      const parts = name.split(/\s+/).filter(Boolean);
+      return ((parts[0] || "")[0] || "") + (parts.length > 1 ? parts[parts.length - 1][0] : "");
+    }
+
+    function showRequest(d) {
+      setText($("whenDate"), d.date || "");
+      setText($("whenTime"), d.time || "");
+      if (d.service) { setText($("whenServiceText"), d.service); show($("whenService")); }
+
+      setText($("personName"), d.customerName || "Customer");
+      setText($("avatar"), initials(d.customerName || "?").toUpperCase());
+      if (d.phone) {
+        const a = $("personPhone");
+        a.href = "tel:" + d.phone.replace(/[^\d+]/g, ""); // only digits and "+" in the href
+        setText(a.querySelector("span"), d.phone);
+        show(a);
+      }
+      if (d.notes) { setText($("notesText"), d.notes); show($("notesRow")); }
+
+      hide($("viewMessage"));
+      show($("viewRequest"));
+    }
+
+    // kind: "approved" | "rejected" (just decided here), or the GHL status
+    // ("confirmed", "cancelled", ...) when it had already been decided.
+    function showResult(kind, justDecided) {
+      hide($("viewMessage"));
+      hide($("viewRequest"));
+
+      const ok = kind === "approved" || kind === "confirmed";
+      const no = kind === "rejected" || kind === "cancelled";
+      $("resultIcon").className = "state-icon " + (ok ? "ok" : no ? "no" : "warn");
+      $("resultIconUse").setAttribute("href", ok ? "#i-check" : no ? "#i-x" : "#i-info");
+
+      let title, text;
+      if (justDecided) {
+        title = ok ? "Appointment approved" : "Appointment rejected";
+        text = ok ? "The customer will be notified." : "The appointment has been cancelled.";
+      } else if (ok || no) {
+        title = ok ? "Already confirmed" : "Already cancelled";
+        text = "This appointment was already " + (ok ? "confirmed" : "cancelled") + ". No action needed.";
+      } else {
+        title = "Already handled";
+        text = "This appointment is no longer pending" + (kind ? " (status: " + kind + ")" : "") + ". No action needed.";
+      }
+      setText($("resultTitle"), title);
+      setText($("resultText"), text);
+
+      if (details) {
+        setText($("recapTitle"), details.customerName || "");
+        setText($("recapSub"), [details.service, [details.date, details.time].filter(Boolean).join(" · ")].filter(Boolean).join("\n"));
+        show($("resultRecap"));
+      }
+
+      show($("viewResult"));
+      if (justDecided) $("resultTitle").focus(); // announce the result to screen readers
+    }
+
+
+    // ---------- Load the appointment from GHL ----------
+
+    async function load() {
+      showMessage("loading", "Loading appointment…", "", false);
+      try {
+        const qs = new URLSearchParams({ appointmentId: appointmentId, contactId: contactId });
+        details = await call(API_URL + "?" + qs.toString(), { method: "GET" });
+
+        // Already decided (by another staff member, or earlier) -> final state, no buttons.
+        if (!details.pending) showResult(details.status, false);
+        else showRequest(details);
+      } catch (err) {
+        const e = describeError(err);
+        showMessage("warn", e.retry ? "Couldn't load the appointment" : "Invalid link", e.text, e.retry);
+      }
+    }
+
+
+    // ---------- Approve / Reject ----------
 
     const approveBtn       = $("approveBtn");
     const rejectBtn        = $("rejectBtn");
@@ -883,9 +798,7 @@
 
     // Disable everything while sending and show a spinner in the clicked button.
     function setBusy(button, busy, busyLabel) {
-      [approveBtn, rejectBtn, confirmRejectBtn, cancelRejectBtn, retryBtn]
-        .forEach((el) => { el.disabled = busy; });
-
+      [approveBtn, rejectBtn, confirmRejectBtn, cancelRejectBtn, retryBtn].forEach((el) => { el.disabled = busy; });
       if (busy) {
         button._original = Array.from(button.childNodes);
         const spin = document.createElement("span");
@@ -902,46 +815,27 @@
     async function submit(action, button) {
       if (sending) return;
       sending = true;
-      lastAttempt = { action, button };
+      lastAttempt = { action: action, button: button };
 
       hide($("errorBox"));
-      setText(statusEl, "Updating GHL… this can take a few seconds.");
+      setText(statusEl, "Updating GHL…");
       setBusy(button, true, action === "approved" ? "Approving…" : "Rejecting…");
 
-      const payload = {
-        bookingId: bookingId,
-        appointmentId: appointmentId,
-        contactId: contactId,
-        action: action,               // "approved" | "rejected"
-        key: linkKey
-      };
-
-      /*
-       * Remember the final state so a refresh shows it.
-       * IMPORTANT: localStorage only protects THIS browser on THIS device.
-       * Another staff member (or the same person on another phone) can still
-       * open the link and submit. That's why the server function checks the
-       * appointment's current status in GHL and only updates it while it is
-       * still pending (otherwise it answers 409 "already handled").
-       */
-      function finish(record) {
-        record.at = new Date().toISOString();
-        saveResult(recordId, record);
-        setText(statusEl, "");
-        showResult(record, false); // buttons are gone from here on
-      }
-
       try {
-        await sendDecision(payload);
-        finish({ action: action });
+        await call(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ appointmentId: appointmentId, contactId: contactId, action: action })
+        });
+        setText(statusEl, "");
+        showResult(action, true); // buttons are gone from here on
       } catch (err) {
-        // 409 = appointment was no longer pending (another staff member, or an
-        // earlier attempt that timed out but did go through). Not an error.
+        // 409 = no longer pending (another staff member got there first). Not an error.
         if (err.name === "HttpError" && err.status === 409) {
-          finish({ action: "already", currentStatus: String(err.data.currentStatus || "") });
+          setText(statusEl, "");
+          showResult(String(err.data.currentStatus || ""), false);
           return;
         }
-
         // Never show success on failure. Re-enable buttons and explain.
         setBusy(button, false);
         setText(statusEl, "");
@@ -957,7 +851,6 @@
 
     approveBtn.addEventListener("click", () => submit("approved", approveBtn));
 
-    // Reject is a two-step action to avoid accidental rejections.
     rejectBtn.addEventListener("click", () => {
       hide($("errorBox"));
       hide($("actions"));
@@ -972,30 +865,22 @@
       rejectBtn.focus();
     });
 
-    confirmRejectBtn.addEventListener("click", () => {
-      submit("rejected", confirmRejectBtn);
-    });
+    confirmRejectBtn.addEventListener("click", () => submit("rejected", confirmRejectBtn));
 
     retryBtn.addEventListener("click", () => {
       if (lastAttempt) submit(lastAttempt.action, lastAttempt.button);
     });
 
+    $("reloadBtn").addEventListener("click", load);
+
 
     // ---------- Start ----------
 
-    if (!recordId || !contactId || !linkKey) {
-      showInvalid(); // no buttons are ever shown in this state
-      return;
+    if (!appointmentId || !contactId) {
+      showMessage("warn", "Invalid link", "This link is invalid. Please open the appointment in GHL.", false);
+    } else {
+      load();
     }
-
-    const saved = loadResult(recordId);
-    if (saved && ["approved", "rejected", "already"].includes(saved.action)) {
-      showResult(saved, true); // already decided on this device
-      return;
-    }
-
-    renderDetails();
-    show($("viewRequest"));
   })();
   </script>
 </body>

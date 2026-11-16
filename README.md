@@ -34,7 +34,6 @@ In **Project → Settings → Environment Variables**, add these, then **redeplo
 | Name | Value |
 |---|---|
 | `GHL_TOKEN` | Your `pit-...` token. Needs `calendars/events.readonly` and `calendars/events.write`. Add `contacts.write` to also get a note on the contact. |
-| `LINK_KEY` | Same value as in `.env` and in the staff email links |
 | `PENDING_STATUSES` | Optional. Default `new` |
 
 `GHL_WEBHOOK_URL` is no longer used, so you can delete it from Vercel.
@@ -44,13 +43,13 @@ In **Project → Settings → Environment Variables**, add these, then **redeplo
 In the workflow that emails staff when a booking is made, add a button/link:
 
 ```
-https://appointmentpage-sand.vercel.app/?appointmentId={{appointment.id}}&contactId={{contact.id}}&key=<LINK_KEY>&customerName={{contact.name}}&service={{appointment.title}}&date={{appointment.start_date}}&time={{appointment.start_time}}
+https://appointmentpage-sand.vercel.app/?appointmentId={{appointment.id}}&contactId={{contact.id}}
 ```
 
-- `appointmentId`, `contactId` and `key` are **required**. If you have the Service Menu booking ID, you can use `bookingId=` instead of `appointmentId=`.
-- `customerName`, `service`, `date`, `time`, `staffName`, `phone` and `notes` are display-only.
-- **Verify the merge fields** in your account by sending yourself a test. An unfilled `{{...}}` is treated as missing.
-- A `&` or `#` inside a value (for example in notes) can break the link, so keep free-text fields out if needed.
+- Both `appointmentId` and `contactId` are **required**. The server only acts when that contact owns that appointment.
+- The page **loads everything else from GHL**: customer name, phone, service, date and time in the booking's timezone, notes, and the current status. Nothing needs to be passed in the link.
+- If the appointment was already confirmed or cancelled, the page shows that straight away, without buttons.
+- Send yourself a test email and check that `{{appointment.id}}` fills in.
 
 ## 3. Notify the customer
 
@@ -61,10 +60,14 @@ Create a GHL workflow with the trigger **Appointment Status** (or the booking st
 
 Each decision also adds a short **note on the contact** (if the token has `contacts.write`) saying the booking was approved or rejected through this page.
 
-## 4. What happens on a click
+## 4. What happens
 
-1. The function validates the input and checks `key` against `LINK_KEY`. A wrong key gets **403**.
-2. It finds the booking from the appointment ID, or uses `bookingId` directly. If it doesn't exist: **404**. If its contact doesn't match the link: **403**.
+**On page load** (`GET /api/decision`), the function reads the appointment and its booking, and returns the details and current status.
+
+**On Approve/Reject** (`POST /api/decision`):
+
+1. The function validates the input.
+2. It finds the booking from the appointment ID. If it doesn't exist: **404**. If its contact doesn't match the link: **403**.
 3. If the booking is no longer pending: **409**, and the page shows "Already handled". This covers double clicks and two staff members on one link.
 4. It sets the status to `confirmed` or `cancelled` and adds a note to the contact (best effort). The page shows success only when GHL accepts the update.
 
@@ -73,12 +76,12 @@ Each decision also adds a short **note on the contact** (if the token has `conta
 Use a **dummy contact** for all of these.
 
 - [ ] **Valid link**: the details show, and the buttons work on a phone.
-- [ ] **Missing `appointmentId`, `contactId` or `key`**: "This link is invalid", with no buttons.
-- [ ] **Wrong key or contact**: "This link isn't valid for this appointment", and nothing changes in GHL.
+- [ ] **Missing `appointmentId` or `contactId`**: "Invalid link", with no buttons.
+- [ ] **Wrong contact**: "This link isn't valid for this appointment", and nothing changes in GHL.
 - [ ] **Approve**: the booking becomes *Confirmed* in GHL.
 - [ ] **Reject**: a "Reject this appointment?" confirmation appears first. After confirming, the booking becomes *Cancelled* in GHL.
 - [ ] **Offline** (DevTools → Network → Offline): an error with Retry and no false success.
-- [ ] **Refresh after submit**: the final state shows, without buttons.
+- [ ] **Refresh after a decision**: the page reloads the status from GHL and shows "Already confirmed" or "Already cancelled", without buttons.
 - [ ] **Two staff, same link**: the second person sees "Already handled".
 - [ ] **Merge fields**: the real staff email link fills in every value.
 
@@ -90,6 +93,6 @@ Use a **dummy contact** for all of these.
 
 ## Security notes
 
-- The token lives only on the server. `LINK_KEY` appears only in staff emails, not in the page source. Change `LINK_KEY` if a link leaks; that makes all older links invalid.
-- localStorage only remembers results on one browser. The server's "still pending" check is the real protection.
+- The token lives only on the server. There is no password in the link: anyone who has a staff email link can open it and approve or reject that booking while it is still pending, so keep those emails internal.
+- The page reads the current status from GHL on every load, and the server only changes bookings that are still pending, so two staff members on one link are safe.
 - URL values are shown with `textContent` only, never as HTML. No tracking or third-party scripts.
