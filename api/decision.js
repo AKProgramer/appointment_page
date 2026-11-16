@@ -47,6 +47,15 @@ const STATUS_FOR_ACTION = { approved: "confirmed", rejected: "cancelled" };
 // path tricks like "../" from reaching the GHL URL.
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
+// Short, safe description of a GHL error reply (never includes the token),
+// returned to the page so staff/admins can see why an update failed.
+function ghlDetail(r) {
+  const d = r.data || {};
+  let msg = d.message || d.error || d.msg || d.raw || "";
+  if (Array.isArray(msg)) msg = msg.join("; ");
+  return { ghlStatus: r.status, ghlMessage: String(msg).slice(0, 300) };
+}
+
 function sendJson(res, status, body) {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -138,14 +147,14 @@ module.exports = async function handler(req, res) {
 
     if (current.status === 401 || current.status === 403) {
       console.error("[decision] GHL rejected the token (check token and scopes):", current.status, current.data);
-      return sendJson(res, 502, { error: "ghl_auth" });
+      return sendJson(res, 502, Object.assign({ error: "ghl_auth", step: "read appointment" }, ghlDetail(current)));
     }
     if (current.status === 404 || current.status === 400) {
       return sendJson(res, 404, { error: "not_found" });
     }
     if (!current.ok) {
       console.error("[decision] GHL get appointment failed:", current.status, current.data);
-      return sendJson(res, 502, { error: "ghl_error" });
+      return sendJson(res, 502, Object.assign({ error: "ghl_error", step: "read appointment" }, ghlDetail(current)));
     }
 
     const appt = (current.data && (current.data.appointment || current.data.event)) || current.data || {};
@@ -186,7 +195,7 @@ module.exports = async function handler(req, res) {
     });
     if (!update.ok) {
       console.error("[decision] GHL update failed:", update.status, update.data);
-      return sendJson(res, 502, { error: "ghl_update_failed" });
+      return sendJson(res, 502, Object.assign({ error: "ghl_update_failed", step: "update status" }, ghlDetail(update)));
     }
 
     // ---- 6. Audit note on the contact (best effort, never fails the request) ----

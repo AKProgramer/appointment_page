@@ -91,7 +91,7 @@ npm i -g vercel
 vercel dev
 ```
 
-`vercel dev` reads `.env` (`ghl_token` and `LINK_KEY` are both supported). Open `http://localhost:3000/?appointmentId=...&contactId=...&key=...`. **This uses your real GHL account, so use a dummy contact.**
+`vercel dev` reads `.env` and serves the site at http://localhost:3000. It uses your real GHL account, so **use a dummy contact**.
 
 ## 7. Test checklist
 

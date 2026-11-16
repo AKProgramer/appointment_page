@@ -897,8 +897,12 @@
             return { retry: false, text: "This appointment wasn't found in GHL. It may have been deleted. Please check it in GHL." };
           case 400:
             return { retry: false, text: "This link is incomplete. Please open the appointment in GHL." };
-          default:
-            return { retry: true, text: "The decision couldn't be saved in GHL (error " + err.status + "). Tap Retry. If it keeps failing, update the appointment in GHL directly." };
+          default: {
+            // Include GHL's own reason (from api/decision.js) to make problems easy to diagnose.
+            const d = err.data || {};
+            const why = d.ghlMessage ? " GHL said: “" + d.ghlMessage + "”" + (d.ghlStatus ? " (" + d.ghlStatus + ")" : "") + "." : "";
+            return { retry: true, text: "The decision couldn't be saved in GHL (error " + err.status + ")." + why + " Tap Retry. If it keeps failing, update the appointment in GHL directly." };
+          }
         }
       }
       return { retry: true, text: "We couldn't reach the server. Check your connection, then tap Retry." };
@@ -950,8 +954,7 @@
         contactId: contactId,
         action: action,               // "approved" | "rejected"
         reason: reason || "",
-        key: linkKey,
-        source: "staff-approval-page"
+        key: linkKey
       };
 
       /*
