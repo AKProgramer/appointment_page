@@ -334,30 +334,7 @@
       font-size: 1.0625rem;
       font-weight: 700;
     }
-    .reject-step .lede { margin-bottom: 14px; }
-    label {
-      display: block;
-      margin-bottom: 6px;
-      font-size: .875rem;
-      font-weight: 600;
-      color: var(--text-2);
-    }
-    .optional { font-weight: 400; color: var(--muted); }
-    textarea {
-      display: block;
-      width: 100%;
-      min-height: 104px;
-      padding: 12px 14px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: var(--surface-2);
-      color: var(--text);
-      font: inherit;
-      resize: vertical;
-    }
-    textarea::placeholder { color: var(--muted); }
-    textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; background: var(--surface); }
-    .hint { margin: 6px 0 16px; font-size: .8125rem; color: var(--muted); }
+    .reject-step .lede { margin-bottom: 16px; }
 
     /* ---------- Status + error ---------- */
     .status:empty { display: none; }
@@ -409,18 +386,6 @@
     }
     .recap-title { font-weight: 650; overflow-wrap: anywhere; }
     .recap-sub { color: var(--muted); font-size: .9375rem; overflow-wrap: anywhere; white-space: pre-line; }
-    .reason-box {
-      margin-top: 10px;
-      padding: 12px 16px;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      text-align: left;
-      white-space: pre-line;
-      overflow-wrap: anywhere;
-      font-size: .9375rem;
-      color: var(--text-2);
-    }
-    .reason-box strong { display: block; color: var(--muted); font-size: .75rem; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 2px; }
     .fine { margin: 18px auto 0 !important; font-size: .8125rem; color: var(--muted); }
 
     .foot {
@@ -475,7 +440,7 @@
 
     <main class="card">
 
-      <!-- STATE 1: invalid link (missing appointmentId, contactId or key) -->
+      <!-- STATE 1: invalid link (missing appointmentId/bookingId, contactId or key) -->
       <section id="viewInvalid" class="state" hidden>
         <div class="state-icon warn" aria-hidden="true"><svg class="ic"><use href="#i-alert"/></svg></div>
         <h1>Invalid link</h1>
@@ -544,9 +509,6 @@
           <div class="reject-step" id="rejectStep" hidden>
             <h2 id="rejectHeading" tabindex="-1">Reject this appointment?</h2>
             <p class="lede">The appointment will be cancelled in GHL.</p>
-            <label for="reason">Reason <span class="optional">(optional)</span></label>
-            <textarea id="reason" maxlength="500" rows="3" placeholder="e.g. No therapist available at that time" aria-describedby="reasonHint"></textarea>
-            <p class="hint" id="reasonHint">May be shared with the customer.</p>
             <div class="actions">
               <button type="button" class="btn btn-reject solid" id="confirmRejectBtn">Confirm rejection</button>
               <button type="button" class="btn btn-ghost" id="cancelRejectBtn">Go back</button>
@@ -567,7 +529,6 @@
           <div class="recap-title" id="recapTitle"></div>
           <div class="recap-sub" id="recapSub"></div>
         </div>
-        <div class="reason-box" id="resultReason" hidden><strong>Reason</strong><span id="resultReasonText"></span></div>
         <p class="fine" id="resultNote" hidden></p>
       </section>
 
@@ -678,7 +639,11 @@
 
     // ---------- Read the URL ----------
 
+    // Either the calendar appointment ID ({{appointment.id}} in GHL emails) or
+    // the Service Menu booking ID. The server finds the booking from either.
     const appointmentId = param("appointmentId");
+    const bookingId     = param("bookingId");
+    const recordId      = bookingId || appointmentId; // used for "remember on this device"
     const contactId     = param("contactId");
     // Static secret added to the link in the staff email (LINK_KEY on the server).
     // It is not in this file, so someone who only finds the page can't use it.
@@ -806,11 +771,6 @@
         setText($("resultText"), approved
           ? "The customer will be notified."
           : "The appointment has been cancelled.");
-
-        if (!approved && data.reason) {
-          setText($("resultReasonText"), data.reason);
-          show($("resultReason"));
-        }
       }
 
       // Recap of which appointment this was, from the link's display fields.
@@ -916,15 +876,14 @@
     const confirmRejectBtn = $("confirmRejectBtn");
     const cancelRejectBtn  = $("cancelRejectBtn");
     const retryBtn         = $("retryBtn");
-    const reasonInput      = $("reason");
     const statusEl         = $("status");
 
     let sending = false;    // blocks double clicks while a request is in flight
-    let lastAttempt = null; // { action, reason, button } for Retry
+    let lastAttempt = null; // { action, button } for Retry
 
     // Disable everything while sending and show a spinner in the clicked button.
     function setBusy(button, busy, busyLabel) {
-      [approveBtn, rejectBtn, confirmRejectBtn, cancelRejectBtn, retryBtn, reasonInput]
+      [approveBtn, rejectBtn, confirmRejectBtn, cancelRejectBtn, retryBtn]
         .forEach((el) => { el.disabled = busy; });
 
       if (busy) {
@@ -940,20 +899,20 @@
       }
     }
 
-    async function submit(action, reason, button) {
+    async function submit(action, button) {
       if (sending) return;
       sending = true;
-      lastAttempt = { action, reason, button };
+      lastAttempt = { action, button };
 
       hide($("errorBox"));
-      setText(statusEl, "Sending your decision…");
+      setText(statusEl, "Updating GHL… this can take a few seconds.");
       setBusy(button, true, action === "approved" ? "Approving…" : "Rejecting…");
 
       const payload = {
+        bookingId: bookingId,
         appointmentId: appointmentId,
         contactId: contactId,
         action: action,               // "approved" | "rejected"
-        reason: reason || "",
         key: linkKey
       };
 
@@ -967,14 +926,14 @@
        */
       function finish(record) {
         record.at = new Date().toISOString();
-        saveResult(appointmentId, record);
+        saveResult(recordId, record);
         setText(statusEl, "");
         showResult(record, false); // buttons are gone from here on
       }
 
       try {
         await sendDecision(payload);
-        finish({ action: action, reason: reason || "" });
+        finish({ action: action });
       } catch (err) {
         // 409 = appointment was no longer pending (another staff member, or an
         // earlier attempt that timed out but did go through). Not an error.
@@ -996,14 +955,14 @@
       }
     }
 
-    approveBtn.addEventListener("click", () => submit("approved", "", approveBtn));
+    approveBtn.addEventListener("click", () => submit("approved", approveBtn));
 
     // Reject is a two-step action to avoid accidental rejections.
     rejectBtn.addEventListener("click", () => {
       hide($("errorBox"));
       hide($("actions"));
       show($("rejectStep"));
-      reasonInput.focus();
+      $("rejectHeading").focus();
     });
 
     cancelRejectBtn.addEventListener("click", () => {
@@ -1014,22 +973,22 @@
     });
 
     confirmRejectBtn.addEventListener("click", () => {
-      submit("rejected", reasonInput.value.trim(), confirmRejectBtn);
+      submit("rejected", confirmRejectBtn);
     });
 
     retryBtn.addEventListener("click", () => {
-      if (lastAttempt) submit(lastAttempt.action, lastAttempt.reason, lastAttempt.button);
+      if (lastAttempt) submit(lastAttempt.action, lastAttempt.button);
     });
 
 
     // ---------- Start ----------
 
-    if (!appointmentId || !contactId || !linkKey) {
+    if (!recordId || !contactId || !linkKey) {
       showInvalid(); // no buttons are ever shown in this state
       return;
     }
 
-    const saved = loadResult(appointmentId);
+    const saved = loadResult(recordId);
     if (saved && ["approved", "rejected", "already"].includes(saved.action)) {
       showResult(saved, true); // already decided on this device
       return;
