@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Keep this page out of search engines. -->
+  <meta name="robots" content="noindex, nofollow">
+  <!-- Don't leak the query string (appointment/contact IDs, customer name) to the logo host or any other request. -->
+  <meta name="referrer" content="no-referrer">
+  <title>Appointment approval</title>
+
+  <style>
+    /* ---------------------------------------------------------------
+       Theme. Brand colors are set from the CONFIG block in the script
+       below; these are only fallbacks.
+       --------------------------------------------------------------- */
+    :root {
+      --brand-primary: #1f4e79;
+      --brand-accent: #2563eb;
+
+      --bg: #f3f5f8;
+      --card: #ffffff;
+      --text: #1a1f29;
+      --muted: #5b6475;
+      --border: #e2e6ec;
+
+      --approve: #15803d;        /* white text on this = 5.0:1 contrast */
+      --approve-hover: #116a32;
+      --reject: #b91c1c;         /* 6.5:1 on white */
+      --reject-tint: #fdf2f2;
+
+      --radius: 16px;
+      color-scheme: light;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { margin: 0; }
+
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.5;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    .wrap {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      border-top: 6px solid var(--brand-primary);
+      box-shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 8px 24px rgba(16, 24, 40, .08);
+      padding: 24px 20px;
+    }
+
+    @media (min-width: 420px) {
+      .wrap { padding-top: 48px; }
+      .card { padding: 28px 28px; }
+    }
+
+    /* Brand header (logo + business name) */
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .brand img {
+      max-height: 40px;
+      max-width: 160px;
+      object-fit: contain;
+    }
+    .brand-name {
+      font-weight: 600;
+      color: var(--brand-primary);
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      line-height: 1.25;
+      margin: 0 0 16px;
+    }
+    h2 {
+      font-size: 1.125rem;
+      margin: 0 0 8px;
+    }
+    h1:focus, h2:focus { outline: none; } /* headings receive focus programmatically only */
+
+    p { margin: 0 0 12px; }
+    .muted { color: var(--muted); }
+    .small { font-size: .875rem; }
+
+    /* Appointment details */
+    .details {
+      margin: 0 0 24px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .details > div {
+      display: grid;
+      grid-template-columns: 96px 1fr;
+      gap: 12px;
+      padding: 12px 14px;
+    }
+    .details > div + div { border-top: 1px solid var(--border); }
+    .details dt { color: var(--muted); font-size: .9375rem; }
+    .details dd {
+      margin: 0;
+      font-weight: 500;
+      overflow-wrap: anywhere;
+      white-space: pre-line; /* keep line breaks in notes */
+    }
+    .details a { color: inherit; }
+
+    /* Buttons */
+    .actions {
+      display: grid;
+      gap: 12px;
+    }
+    @media (min-width: 420px) {
+      .actions { grid-template-columns: 1fr 1fr; }
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      min-height: 52px;
+      padding: 12px 20px;
+      border-radius: 12px;
+      border: 2px solid transparent;
+      font: inherit;
+      font-size: 1.0625rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color .15s, border-color .15s, color .15s;
+    }
+    .btn:focus-visible {
+      outline: 3px solid var(--brand-accent);
+      outline-offset: 3px;
+    }
+    .btn:disabled { cursor: not-allowed; opacity: .6; }
+    .btn[aria-busy="true"] { opacity: 1; cursor: progress; }
+
+    .btn-approve { background: var(--approve); color: #fff; }
+    .btn-approve:hover:not(:disabled) { background: var(--approve-hover); }
+
+    .btn-reject { background: #fff; color: var(--reject); border-color: var(--reject); }
+    .btn-reject:hover:not(:disabled) { background: var(--reject-tint); }
+    .btn-reject.solid { background: var(--reject); color: #fff; }
+    .btn-reject.solid:hover:not(:disabled) { background: #991b1b; }
+
+    .btn-plain {
+      background: transparent;
+      color: var(--text);
+      border-color: var(--border);
+    }
+    .btn-plain:hover:not(:disabled) { background: #f6f7f9; }
+
+    /* Spinner shown inside a button while sending */
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2.5px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .spinner { animation-duration: 2s; }
+    }
+
+    /* Reject confirmation step */
+    .reject-step {
+      border: 1px solid #f3c7c7;
+      background: var(--reject-tint);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    label { display: block; font-weight: 600; margin: 12px 0 6px; }
+    .optional { font-weight: 400; color: var(--muted); }
+    textarea {
+      display: block;
+      width: 100%;
+      min-height: 96px;
+      padding: 12px;
+      border: 1px solid #c9ced8;
+      border-radius: 10px;
+      font: inherit;
+      color: var(--text);
+      background: #fff;
+      resize: vertical;
+    }
+    textarea:focus-visible {
+      outline: 3px solid var(--brand-accent);
+      outline-offset: 1px;
+      border-color: transparent;
+    }
+    .stack { display: grid; gap: 10px; margin-top: 14px; }
+
+    /* Status + error messages */
+    .status {
+      margin-top: 14px;
+      min-height: 1.5em;
+      color: var(--muted);
+      font-size: .9375rem;
+      text-align: center;
+    }
+    .error-box {
+      margin-top: 16px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 1px solid #f1b5b5;
+      background: #fff5f5;
+      color: #7f1d1d;
+    }
+    .error-box p { margin-bottom: 12px; }
+
+    /* Result + invalid states */
+    .result { text-align: center; padding: 8px 0; }
+    .result-icon {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 16px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 32px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .result-icon.ok { background: var(--approve); }
+    .result-icon.no { background: var(--reject); }
+    .result-icon.warn { background: #b45309; }
+    .reason-box {
+      text-align: left;
+      margin: 16px 0 0;
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: #f6f7f9;
+      border: 1px solid var(--border);
+      white-space: pre-line;
+      overflow-wrap: anywhere;
+    }
+
+    [hidden] { display: none !important; }
+
+    .sr-only {
+      position: absolute;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="card">
+
+      <!-- Logo and business name. Both are hidden if not configured. -->
+      <div class="brand" id="brand" hidden>
+        <img id="brandLogo" alt="" hidden>
+        <span class="brand-name" id="brandName"></span>
+      </div>
+
+      <!-- STATE 1: invalid link (missing appointmentId or contactId) -->
+      <section id="viewInvalid" class="result" hidden>
+        <div class="result-icon warn" aria-hidden="true">!</div>
+        <h1 tabindex="-1">Invalid link</h1>
+        <p class="muted">This link is invalid. Please open the appointment in GHL.</p>
+      </section>
+
+      <!-- STATE 2: the request to review -->
+      <section id="viewRequest" hidden>
+        <h1>Appointment request</h1>
+
+        <!-- Filled in by the script, using textContent only -->
+        <dl class="details" id="details"></dl>
+
+        <!-- Main buttons -->
+        <div class="actions" id="actions">
+          <button type="button" class="btn btn-approve" id="approveBtn">Approve</button>
+          <button type="button" class="btn btn-reject" id="rejectBtn">Reject</button>
+        </div>
+
+        <!-- Inline confirmation step for rejecting -->
+        <div class="reject-step" id="rejectStep" hidden>
+          <h2 id="rejectHeading" tabindex="-1">Reject this appointment?</h2>
+          <label for="reason">Reason <span class="optional">(optional, may be shared with the customer)</span></label>
+          <textarea id="reason" maxlength="500" rows="3"></textarea>
+          <div class="stack">
+            <button type="button" class="btn btn-reject solid" id="confirmRejectBtn">Confirm rejection</button>
+            <button type="button" class="btn btn-plain" id="cancelRejectBtn">Go back</button>
+          </div>
+        </div>
+
+        <!-- Error with Retry. role="alert" makes screen readers announce it. -->
+        <div class="error-box" id="errorBox" role="alert" hidden>
+          <p id="errorText" tabindex="-1"></p>
+          <button type="button" class="btn btn-plain" id="retryBtn">Retry</button>
+        </div>
+
+        <!-- Progress messages for screen readers and sighted users -->
+        <p class="status" id="status" aria-live="polite"></p>
+      </section>
+
+      <!-- STATE 3: final result -->
+      <section id="viewResult" class="result" hidden>
+        <div class="result-icon" id="resultIcon" aria-hidden="true"></div>
+        <h1 id="resultTitle" tabindex="-1"></h1>
+        <p id="resultText" class="muted"></p>
+        <div id="resultReason" class="reason-box" hidden></div>
+        <p id="resultNote" class="muted small" hidden></p>
+      </section>
+
+      <noscript>
+        <p>This page needs JavaScript to record your decision. Please enable it, or update the appointment in GHL.</p>
+      </noscript>
+    </div>
+  </main>
+
+  <script>
+  (function () {
+    "use strict";
+
+    /* =================================================================
+       CONFIGURATION - edit these values before going live.
+       ================================================================= */
+
+    // Shown at the top of the card. Leave the placeholder or "" to hide it.
+    const BUSINESS_NAME = "[BUSINESS NAME]";
+
+    // The server function that updates the appointment in GHL (api/decision.js).
+    // Same domain as this page, so no CORS setup is needed.
+    // The GHL token lives ONLY in the server's environment variables - never
+    // put it in this file, because anyone with a link can read the page source.
+    const API_URL = "/api/decision";
+
+    // Full https:// URL to your logo. Leave "" to skip the logo.
+    const LOGO_URL = "";
+
+    // Brand colors as hex, e.g. "#1f4e79". Primary = top bar + business name,
+    // accent = keyboard focus ring. Approve/Reject stay green/red on purpose.
+    const BRAND_PRIMARY = "#1f4e79";
+    const BRAND_ACCENT  = "#2563eb";
+
+    // How long to wait for the server before showing an error.
+    const REQUEST_TIMEOUT_MS = 20000;
+
+    /* ================================================================= */
+
+
+    // ---------- Small helpers ----------
+
+    const $ = (id) => document.getElementById(id);
+
+    // A value counts as "not set" if it is empty or still a [PLACEHOLDER].
+    function isUnset(value) {
+      return !value || /^\[.*\]$/.test(value.trim());
+    }
+
+    // Read a query-string parameter. URLSearchParams already decodes %20 etc.
+    // If GHL could not fill a merge field it may leave "{{appointment.id}}"
+    // in the link, so treat anything containing "{{" as missing.
+    const params = new URLSearchParams(window.location.search);
+    function param(name) {
+      const raw = (params.get(name) || "").trim();
+      return raw.includes("{{") ? "" : raw;
+    }
+
+    function show(el) { el.hidden = false; }
+    function hide(el) { el.hidden = true; }
+
+    // localStorage can throw (private mode, blocked storage), so always wrap it.
+    function storageKey(id) { return "staff-approval:" + id; }
+    function loadResult(id) {
+      try { return JSON.parse(localStorage.getItem(storageKey(id)) || "null"); }
+      catch (e) { return null; }
+    }
+    function saveResult(id, data) {
+      try { localStorage.setItem(storageKey(id), JSON.stringify(data)); }
+      catch (e) { /* storage unavailable: the page still works, refresh just won't remember */ }
+    }
+
+
+    // ---------- Branding ----------
+
+    (function applyBranding() {
+      const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+      if (hex.test(BRAND_PRIMARY)) document.documentElement.style.setProperty("--brand-primary", BRAND_PRIMARY);
+      if (hex.test(BRAND_ACCENT))  document.documentElement.style.setProperty("--brand-accent", BRAND_ACCENT);
+
+      const hasName = !isUnset(BUSINESS_NAME);
+      const hasLogo = !isUnset(LOGO_URL);
+
+      if (hasName) {
+        $("brandName").textContent = BUSINESS_NAME;
+        document.title = "Appointment approval - " + BUSINESS_NAME;
+      }
+      if (hasLogo) {
+        const img = $("brandLogo");
+        img.alt = hasName ? BUSINESS_NAME + " logo" : "Logo";
+        img.addEventListener("error", () => hide(img)); // hide a broken logo
+        img.src = LOGO_URL;
+        show(img);
+        if (hasName) $("brandName").classList.add("sr-only"); // logo already names the business
+      }
+      if (hasName || hasLogo) show($("brand"));
+    })();
+
+
+    // ---------- Read the URL ----------
+
+    const appointmentId = param("appointmentId");
+    const contactId     = param("contactId");
+    // Static secret added to the link in the staff email (LINK_KEY on the server).
+    // It is not in this file, so someone who only finds the page can't use it.
+    const linkKey       = param("key");
+
+    // Optional display-only fields, in the order they appear on the card.
+    const displayFields = [
+      ["Customer", param("customerName")],
+      ["Service",  param("service")],
+      ["Date",     param("date")],
+      ["Time",     param("time")],
+      ["Staff",    param("staffName")],
+      ["Phone",    param("phone")],
+      ["Notes",    param("notes")]
+    ];
+
+
+    // ---------- Views ----------
+
+    function showInvalid() {
+      show($("viewInvalid"));
+    }
+
+    function renderDetails() {
+      const dl = $("details");
+      displayFields.forEach(([label, value]) => {
+        if (!value) return;
+        const row = document.createElement("div");
+        const dt = document.createElement("dt");
+        const dd = document.createElement("dd");
+        dt.textContent = label;
+
+        if (label === "Phone") {
+          // Tap-to-call link. Only digits and "+" go into the href; the text is shown as-is.
+          const a = document.createElement("a");
+          a.href = "tel:" + value.replace(/[^\d+]/g, "");
+          a.textContent = value;
+          dd.appendChild(a);
+        } else {
+          dd.textContent = value; // textContent, never innerHTML: URL values can't inject HTML
+        }
+
+        row.append(dt, dd);
+        dl.appendChild(row);
+      });
+      if (!dl.children.length) hide(dl); // nothing optional was passed
+    }
+
+    // data.action is "approved", "rejected", or "already" (someone else decided first).
+    function showResult(data, fromStorage) {
+      hide($("viewRequest"));
+      const icon = $("resultIcon");
+
+      if (data.action === "already") {
+        const s = data.currentStatus || "";
+        icon.className = "result-icon warn";
+        icon.textContent = "i";
+        $("resultTitle").textContent = "Already handled";
+        $("resultText").textContent =
+          s === "confirmed" ? "This appointment has already been confirmed. No changes were made." :
+          s === "cancelled" ? "This appointment has already been cancelled. No changes were made." :
+          "This appointment is no longer pending" + (s ? " (status: " + s + ")" : "") + ". No changes were made.";
+      } else {
+        const approved = data.action === "approved";
+        icon.className = "result-icon " + (approved ? "ok" : "no");
+        icon.textContent = approved ? "✓" : "✕"; // check / cross
+
+        $("resultTitle").textContent = approved ? "Appointment approved" : "Appointment rejected";
+        $("resultText").textContent = approved
+          ? "Appointment approved. The customer will be notified."
+          : "Appointment rejected.";
+
+        if (!approved && data.reason) {
+          $("resultReason").textContent = "Reason: " + data.reason;
+          show($("resultReason"));
+        }
+      }
+
+      const notes = [];
+      if (fromStorage && data.at) {
+        notes.push("Recorded from this device on " + new Date(data.at).toLocaleString() + ".");
+      }
+      if (notes.length) {
+        $("resultNote").textContent = notes.join(" ");
+        show($("resultNote"));
+      }
+
+      show($("viewResult"));
+      // Move focus to the result after a submit so screen readers announce it.
+      // (Not on page load, where focus jumps would be unexpected.)
+      if (!fromStorage) $("resultTitle").focus();
+    }
+
+
+    // ---------- Sending ----------
+
+    class HttpError extends Error {
+      constructor(status, data) {
+        super("HTTP " + status);
+        this.name = "HttpError";
+        this.status = status;
+        this.data = data || {};
+      }
+    }
+
+    // fetch() with a timeout (fetch has none by default).
+    function fetchWithTimeout(url, options) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+      return fetch(url, Object.assign({}, options, { signal: controller.signal }))
+        .finally(() => clearTimeout(timer));
+    }
+
+    /*
+     * Send the decision to our server function, which updates GHL.
+     * Resolves with the server's JSON on success (HTTP 2xx), otherwise throws.
+     * Success is only shown when the server confirms GHL accepted the update.
+     */
+    async function sendDecision(payload) {
+      if (navigator.onLine === false) {
+        const e = new Error("offline"); e.name = "OfflineError"; throw e;
+      }
+
+      const res = await fetchWithTimeout(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      let data = {};
+      try { data = await res.json(); } catch (e) { /* non-JSON reply */ }
+
+      if (!res.ok || !data.ok) throw new HttpError(res.status, data);
+      return data;
+    }
+
+    // Returns { text, retry } - retry=false hides the Retry button when trying
+    // again can't help (bad link, appointment missing).
+    function describeError(err) {
+      const name = err && err.name;
+      if (name === "OfflineError") {
+        return { retry: true, text: "You appear to be offline. Check your connection, then tap Retry." };
+      }
+      if (name === "AbortError") {
+        return { retry: true, text: "The server took too long to respond, so we can't be sure your decision was saved. Tap Retry - it's safe, because an appointment that was already updated won't be changed twice." };
+      }
+      if (name === "HttpError") {
+        switch (err.status) {
+          case 403:
+            return { retry: false, text: "This link isn't valid for this appointment. Please open the appointment in GHL." };
+          case 404:
+            return { retry: false, text: "This appointment wasn't found in GHL. It may have been deleted. Please check it in GHL." };
+          case 400:
+            return { retry: false, text: "This link is incomplete. Please open the appointment in GHL." };
+          default:
+            return { retry: true, text: "The decision couldn't be saved in GHL (error " + err.status + "). Tap Retry. If it keeps failing, update the appointment in GHL directly." };
+        }
+      }
+      return { retry: true, text: "We couldn't reach the server. Check your connection, then tap Retry." };
+    }
+
+
+    // ---------- Interaction ----------
+
+    const approveBtn       = $("approveBtn");
+    const rejectBtn        = $("rejectBtn");
+    const confirmRejectBtn = $("confirmRejectBtn");
+    const cancelRejectBtn  = $("cancelRejectBtn");
+    const retryBtn         = $("retryBtn");
+    const reasonInput      = $("reason");
+    const statusEl         = $("status");
+
+    let sending = false;   // blocks double clicks while a request is in flight
+    let lastAttempt = null; // { action, reason, button } for Retry
+
+    function setBusy(button, busy, busyLabel) {
+      [approveBtn, rejectBtn, confirmRejectBtn, cancelRejectBtn, retryBtn, reasonInput]
+        .forEach((el) => { el.disabled = busy; });
+
+      if (busy) {
+        button.dataset.label = button.textContent;
+        button.textContent = "";
+        const spin = document.createElement("span");
+        spin.className = "spinner";
+        spin.setAttribute("aria-hidden", "true");
+        button.append(spin, document.createTextNode(busyLabel));
+        button.setAttribute("aria-busy", "true");
+      } else if (button.dataset.label) {
+        button.textContent = button.dataset.label;
+        button.removeAttribute("aria-busy");
+      }
+    }
+
+    async function submit(action, reason, button) {
+      if (sending) return;
+      sending = true;
+      lastAttempt = { action, reason, button };
+
+      hide($("errorBox"));
+      statusEl.textContent = "Sending your decision…";
+      setBusy(button, true, action === "approved" ? "Approving…" : "Rejecting…");
+
+      const payload = {
+        appointmentId: appointmentId,
+        contactId: contactId,
+        action: action,               // "approved" | "rejected"
+        reason: reason || "",
+        key: linkKey,
+        source: "staff-approval-page"
+      };
+
+      /*
+       * Remember the final state so a refresh shows it.
+       * IMPORTANT: localStorage only protects THIS browser on THIS device.
+       * Another staff member (or the same person on another phone) can still
+       * open the link and submit. That's why the server function checks the
+       * appointment's current status in GHL and only updates it while it is
+       * still pending (otherwise it answers 409 "already handled").
+       */
+      function finish(record) {
+        record.at = new Date().toISOString();
+        saveResult(appointmentId, record);
+        statusEl.textContent = "";
+        showResult(record, false); // buttons are gone from here on
+      }
+
+      try {
+        await sendDecision(payload);
+        finish({ action: action, reason: reason || "" });
+      } catch (err) {
+        // 409 = appointment was no longer pending (another staff member, or an
+        // earlier attempt that timed out but did go through). Not an error.
+        if (err.name === "HttpError" && err.status === 409) {
+          finish({ action: "already", currentStatus: String(err.data.currentStatus || "") });
+          return;
+        }
+
+        // Never show success on failure. Re-enable buttons and explain.
+        setBusy(button, false);
+        statusEl.textContent = "";
+        const info = describeError(err);
+        $("errorText").textContent = info.text;
+        retryBtn.hidden = !info.retry;
+        show($("errorBox"));
+        (info.retry ? retryBtn : $("errorText")).focus();
+      } finally {
+        sending = false;
+      }
+    }
+
+    approveBtn.addEventListener("click", () => submit("approved", "", approveBtn));
+
+    // Reject is a two-step action to avoid accidental rejections.
+    rejectBtn.addEventListener("click", () => {
+      hide($("errorBox"));
+      hide($("actions"));
+      show($("rejectStep"));
+      reasonInput.focus();
+    });
+
+    cancelRejectBtn.addEventListener("click", () => {
+      hide($("errorBox"));
+      hide($("rejectStep"));
+      show($("actions"));
+      rejectBtn.focus();
+    });
+
+    confirmRejectBtn.addEventListener("click", () => {
+      submit("rejected", reasonInput.value.trim(), confirmRejectBtn);
+    });
+
+    retryBtn.addEventListener("click", () => {
+      if (lastAttempt) submit(lastAttempt.action, lastAttempt.reason, lastAttempt.button);
+    });
+
+
+    // ---------- Start ----------
+
+    if (!appointmentId || !contactId || !linkKey) {
+      showInvalid(); // no buttons are ever shown in this state
+      return;
+    }
+
+    const saved = loadResult(appointmentId);
+    if (saved && ["approved", "rejected", "already"].includes(saved.action)) {
+      showResult(saved, true); // already decided on this device
+      return;
+    }
+
+    renderDetails();
+    show($("viewRequest"));
+  })();
+  </script>
+</body>
+</html>
