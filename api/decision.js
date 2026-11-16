@@ -213,8 +213,20 @@ async function describe(token, booking) {
 }
 
 module.exports = async function handler(req, res) {
+  // CORS: let the page work when it is opened from another origin (a local
+  // file, a GHL custom code element, another domain). Safe to allow any origin:
+  // no cookies or secrets are involved, and the API is reachable directly anyway.
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Max-Age", "86400");
+  if (req.method === "OPTIONS") {
+    res.statusCode = 204;
+    return res.end();
+  }
+
   if (req.method !== "GET" && req.method !== "POST") {
-    res.setHeader("Allow", "GET, POST");
+    res.setHeader("Allow", "GET, POST, OPTIONS");
     return sendJson(res, 405, { error: "method_not_allowed" });
   }
 

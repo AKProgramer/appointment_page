@@ -567,7 +567,9 @@
 
     // Server function (api/decision.js). It holds the GHL token - never put
     // the token in this file, because anyone with a link can read the source.
-    const API_URL = "/api/decision";
+    // Full address, so the page also works when opened from a file or embedded
+    // in GHL (the function allows other origins via CORS).
+    const API_URL = "https://appointmentpage-sand.vercel.app/api/decision";
 
     // How long to wait for the server before showing an error.
     const REQUEST_TIMEOUT_MS = 20000;
