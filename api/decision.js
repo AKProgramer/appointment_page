@@ -1,28 +1,25 @@
 /*
  * /api/decision  (Vercel Serverless Function, Node 18+)
  *
- *   GET  ?appointmentId=…&contactId=…         -> appointment details for the page
- *   POST { appointmentId, contactId, action: "approved" | "rejected" }
+ *   GET  ?appointmentId=<bookingId>             -> booking details for the page
+ *   POST { appointmentId: <bookingId>, action: "approved" | "rejected" }
  *                                               -> sets the booking status in GHL
  *
- * Access check: the request must name an appointment AND the contact who owns
- * it. Both are long random GHL IDs, so they can't realistically be guessed;
- * anyone who has a staff email link can use it, though.
+ * The parameter is called "appointmentId" but holds the Service Menu
+ * *booking* ID. There is no other access check: booking IDs are long random
+ * GHL IDs, but anyone who has a staff email link can use it.
  *
- * Bookings come from GHL's Service Menu. GHL's normal appointment endpoint
- * refuses to change their status ("Calendar is inactive"), so the status is set
- * on the matching *service booking* instead:
- *   1. GET /calendars/events/appointments/{appointmentId}      read the appointment
- *   2. GET /calendars/services/bookings?locationId&startTime&endTime
- *        (dates MUST be epoch milliseconds; max 31 days)       find its booking:
- *        same contact + same start time + same service
- *   3. PUT /calendars/services/bookings/{bookingId}  { status } (no locationId in URL!)
+ * Bookings come from GHL's Service Menu:
+ *   1. GET /calendars/services/bookings/{bookingId}              read the booking
+ *   2. GET /calendars/events?locationId&userId&startTime&endTime  (best effort)
+ *        find its calendar event for the customer's phone + notes
+ *   3. PUT /calendars/services/bookings/{bookingId}  { status }  (no locationId in URL!)
  * GHL keeps the calendar appointment's status in sync automatically.
  *
  * Responses (JSON):
- *   200 GET:  { ok, status, customerName, phone, service, date, time, notes }
+ *   200 GET:  { ok, status, pending, customerName, phone, service, date, time, notes }
  *   200 POST: { ok, action, status }
- *   400 bad_request | 403 forbidden (contact doesn't own it) | 404 not_found
+ *   400 bad_request | 404 not_found
  *   405 method_not_allowed | 409 already_decided { currentStatus }
  *   500 not_configured | 502 GHL error { ghlStatus, ghlMessage } | 504 GHL timeout
  *
@@ -40,7 +37,6 @@ const GHL_BASE = "https://services.leadconnectorhq.com";
 const API_VERSION = "2021-04-15";
 const CONTACTS_API_VERSION = "2021-07-28";
 const GHL_TIMEOUT_MS = 8000;
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Page action -> GHL booking status
 const STATUS_FOR_ACTION = { approved: "confirmed", rejected: "cancelled" };
@@ -87,51 +83,49 @@ async function ghl(token, path, { method = "GET", version = API_VERSION, body } 
   }
 }
 
-// Turn a failed GHL reply into one of our error responses.
-function ghlFailure(r, step) {
+/*
+ * Load the booking.
+ * Returns { booking } or { fail: { code, body } }.
+ */
+async function loadBooking(token, bookingId) {
+  const r = await ghl(token, "/calendars/services/bookings/" + encodeURIComponent(bookingId));
   if (r.status === 401 || r.status === 403) {
-    console.error("[decision] GHL rejected the token (" + step + "):", r.status, r.data);
-    return { code: 502, body: Object.assign({ error: "ghl_auth", step }, ghlDetail(r)) };
+    console.error("[decision] GHL rejected the token (read booking):", r.status, r.data);
+    return { fail: { code: 502, body: Object.assign({ error: "ghl_auth", step: "read booking" }, ghlDetail(r)) } };
   }
-  if (r.status === 400 || r.status === 404) return { code: 404, body: { error: "not_found" } };
-  console.error("[decision] GHL error (" + step + "):", r.status, r.data);
-  return { code: 502, body: Object.assign({ error: "ghl_error", step }, ghlDetail(r)) };
+  if (r.status === 400 || r.status === 404) return { fail: { code: 404, body: { error: "not_found" } } };
+  if (!r.ok) {
+    console.error("[decision] GHL error (read booking):", r.status, r.data);
+    return { fail: { code: 502, body: Object.assign({ error: "ghl_error", step: "read booking" }, ghlDetail(r)) } };
+  }
+
+  const booking = (r.data && (r.data.booking || r.data)) || {};
+  if (!booking.bookingId || booking.deleted) return { fail: { code: 404, body: { error: "not_found" } } };
+  return { booking };
 }
 
 /*
- * Load the appointment and its Service Menu booking, and check the contact.
- * Returns { appt, booking } or { fail: { code, body } }.
+ * Best effort: the booking's calendar event holds the customer's form details
+ * (name, phone) and notes. Found via the staff member's events at that time.
+ * Returns the event, or null.
  */
-async function loadBooking(token, appointmentId, contactId) {
-  const ev = await ghl(token, "/calendars/events/appointments/" + encodeURIComponent(appointmentId));
-  if (!ev.ok) return { fail: ghlFailure(ev, "read appointment") };
-
-  const appt = (ev.data && (ev.data.appointment || ev.data.event)) || ev.data || {};
-
-  // The contact in the link must own this appointment.
-  if (appt.contactId !== contactId) {
-    console.warn("[decision] contactId mismatch for appointment", appointmentId);
-    return { fail: { code: 403, body: { error: "forbidden" } } };
+async function findEvent(token, booking) {
+  const svc = (booking.services || [])[0] || {};
+  const start = Date.parse(booking.startTime);
+  if (!svc.serviceStaffId || isNaN(start)) return null;
+  try {
+    const r = await ghl(token,
+      "/calendars/events?locationId=" + encodeURIComponent(booking.locationId) +
+      "&userId=" + encodeURIComponent(svc.serviceStaffId) +
+      "&startTime=" + (start - 1) + "&endTime=" + (Date.parse(booking.endTime) || start + 1));
+    return ((r.ok && r.data && r.data.events) || []).find((e) =>
+      e.contactId === booking.contactId &&
+      Date.parse(e.startTime) === start &&
+      (!svc.id || e.calendarId === svc.id)
+    ) || null;
+  } catch (e) {
+    return null;
   }
-
-  const start = Date.parse(appt.startTime);
-  if (!appt.locationId || isNaN(start)) return { fail: { code: 404, body: { error: "not_found" } } };
-
-  const list = await ghl(token,
-    "/calendars/services/bookings?locationId=" + encodeURIComponent(appt.locationId) +
-    "&startTime=" + (start - DAY_MS) + "&endTime=" + (start + DAY_MS));
-  if (!list.ok) return { fail: ghlFailure(list, "find booking") };
-
-  const booking = ((list.data && list.data.bookings) || []).find((b) =>
-    b.contactId === appt.contactId &&
-    Date.parse(b.startTime) === start &&
-    (!appt.calendarId || (b.services || []).some((s) => s.id === appt.calendarId))
-  );
-  if (!booking) {
-    console.warn("[decision] No service booking matches appointment", appointmentId);
-    return { fail: { code: 404, body: { error: "not_found" } } };
-  }
-  return { appt, booking };
 }
 
 // Format a date/time in the booking's own timezone.
@@ -144,16 +138,17 @@ function fmt(iso, timeZone, options) {
 }
 
 // Build the details shown on the page.
-async function describe(token, appt, booking) {
-  const form = (appt.appointmentMeta && appt.appointmentMeta.defaultFormDetails) || {};
-  const titleParts = String(appt.title || booking.title || "").split(" - ");
+async function describe(token, booking) {
+  const event = await findEvent(token, booking);
+  const form = (event && event.appointmentMeta && event.appointmentMeta.defaultFormDetails) || {};
+  const titleParts = String((event && event.title) || booking.title || "").split(" - ");
   const customerName = [form.firstName, form.lastName].filter(Boolean).join(" ") || titleParts[0] || "";
 
-  // Service name + duration from the Service Menu (falls back to the title).
+  // Service name + duration from the Service Menu (falls back to the event title).
   let service = titleParts.slice(1).join(" - ");
-  const serviceId = appt.calendarId || (booking.services && booking.services[0] && booking.services[0].id);
+  const serviceId = booking.services && booking.services[0] && booking.services[0].id;
   if (serviceId) {
-    const s = await ghl(token, "/calendars/services?locationId=" + encodeURIComponent(appt.locationId));
+    const s = await ghl(token, "/calendars/services?locationId=" + encodeURIComponent(booking.locationId)).catch(() => ({}));
     const match = ((s.data && s.data.services) || []).find((x) => (x._id || x.id) === serviceId);
     if (match) {
       service = match.name + (match.serviceDuration ? " · " + match.serviceDuration + " " + (match.serviceDurationUnit || "mins") : "");
@@ -161,17 +156,16 @@ async function describe(token, appt, booking) {
   }
 
   const tz = booking.timezone || "America/New_York";
-  const start = booking.startTime || appt.startTime;
-  const end = booking.endTime || appt.endTime;
   const timeOpts = { hour: "numeric", minute: "2-digit" };
 
   return {
     customerName,
     phone: form.phone || "",
     service,
-    date: fmt(start, tz, { weekday: "short", month: "short", day: "numeric", year: "numeric" }),
-    time: fmt(start, tz, timeOpts) + (end ? " – " + fmt(end, tz, Object.assign({ timeZoneName: "short" }, timeOpts)) : ""),
-    notes: appt.notes || ""
+    date: fmt(booking.startTime, tz, { weekday: "short", month: "short", day: "numeric", year: "numeric" }),
+    time: fmt(booking.startTime, tz, timeOpts) +
+      (booking.endTime ? " – " + fmt(booking.endTime, tz, Object.assign({ timeZoneName: "short" }, timeOpts)) : ""),
+    notes: (event && event.notes) || ""
   };
 }
 
@@ -200,11 +194,11 @@ module.exports = async function handler(req, res) {
   }
   if (!input || typeof input !== "object") return sendJson(res, 400, { error: "bad_request" });
 
-  const appointmentId = String(input.appointmentId || "");
-  const contactId = String(input.contactId || "");
+  // "appointmentId" in the link is the Service Menu booking ID.
+  const bookingId = String(input.appointmentId || "");
   const action = String(input.action || "");
 
-  if (!ID_PATTERN.test(appointmentId) || !ID_PATTERN.test(contactId) ||
+  if (!ID_PATTERN.test(bookingId) ||
       (req.method === "POST" && !STATUS_FOR_ACTION[action])) {
     return sendJson(res, 400, { error: "bad_request" });
   }
@@ -213,15 +207,15 @@ module.exports = async function handler(req, res) {
     .split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
 
   try {
-    // ---- 2. Load the appointment + booking (checks the contact owns it) ----
-    const loaded = await loadBooking(token, appointmentId, contactId);
+    // ---- 2. Load the booking ----
+    const loaded = await loadBooking(token, bookingId);
     if (loaded.fail) return sendJson(res, loaded.fail.code, loaded.fail.body);
-    const { appt, booking } = loaded;
+    const { booking } = loaded;
     const currentStatus = String(booking.status || "").toLowerCase();
 
     // ---- GET: return details for the page ----
     if (req.method === "GET") {
-      const details = await describe(token, appt, booking);
+      const details = await describe(token, booking);
       return sendJson(res, 200, Object.assign({ ok: true, status: currentStatus, pending: pending.includes(currentStatus) }, details));
     }
 
@@ -233,7 +227,7 @@ module.exports = async function handler(req, res) {
 
     // ---- POST 4. Update the status ----
     const newStatus = STATUS_FOR_ACTION[action];
-    const update = await ghl(token, "/calendars/services/bookings/" + encodeURIComponent(booking.bookingId), {
+    const update = await ghl(token, "/calendars/services/bookings/" + encodeURIComponent(bookingId), {
       method: "PUT",
       body: { status: newStatus }
     });
@@ -244,11 +238,11 @@ module.exports = async function handler(req, res) {
 
     // ---- POST 5. Audit note on the contact (best effort; needs contacts.write) ----
     const note = (action === "approved" ? "Booking approved" : "Booking rejected") +
-      " via staff approval page (" + (appt.title || "booking") + ", " + (appt.startTime || "") + ").";
-    const n = await ghl(token, "/contacts/" + encodeURIComponent(appt.contactId) + "/notes", {
+      " via staff approval page (" + (booking.title || "booking") + ", " + (booking.startTime || "") + ").";
+    const n = booking.contactId && await ghl(token, "/contacts/" + encodeURIComponent(booking.contactId) + "/notes", {
       method: "POST", version: CONTACTS_API_VERSION, body: { body: note }
     }).catch(() => ({ ok: false }));
-    if (!n.ok) console.warn("[decision] Note not added (token may lack contacts.write):", n.status);
+    if (!n || !n.ok) console.warn("[decision] Note not added (token may lack contacts.write):", n.status);
 
     return sendJson(res, 200, { ok: true, action, status: newStatus });
   } catch (err) {

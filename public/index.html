@@ -619,12 +619,10 @@
 
 
     // ---------- Link parameters ----------
-    // Link format: ?appointmentId={{appointment.id}}&contactId={{contact.id}}
-    // Both are required: the server checks the contact owns the appointment.
+    // Link format: ?appointmentId=<Service Menu booking ID>
     // Everything shown on the page is loaded from GHL, not taken from the link.
 
-    const appointmentId = param("appointmentId");
-    const contactId     = param("contactId");
+    const bookingId = param("appointmentId");
 
     let details = null; // appointment details loaded from GHL
 
@@ -771,7 +769,7 @@
     async function load() {
       showMessage("loading", "Loading appointment…", "", false);
       try {
-        const qs = new URLSearchParams({ appointmentId: appointmentId, contactId: contactId });
+        const qs = new URLSearchParams({ appointmentId: bookingId });
         details = await call(API_URL + "?" + qs.toString(), { method: "GET" });
 
         // Already decided (by another staff member, or earlier) -> final state, no buttons.
@@ -825,7 +823,7 @@
         await call(API_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ appointmentId: appointmentId, contactId: contactId, action: action })
+          body: JSON.stringify({ appointmentId: bookingId, action: action })
         });
         setText(statusEl, "");
         showResult(action, true); // buttons are gone from here on
@@ -876,7 +874,7 @@
 
     // ---------- Start ----------
 
-    if (!appointmentId || !contactId) {
+    if (!bookingId) {
       showMessage("warn", "Invalid link", "This link is invalid. Please open the appointment in GHL.", false);
     } else {
       load();
